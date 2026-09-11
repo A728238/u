@@ -1,5 +1,5 @@
 /**
- * x.js - Integrated Client-Side Desktop Architecture (Fix Version)
+ * x.js - Integrated Client-Side Desktop Architecture (Big Binary Fix Version)
  */
 
 // ============================================================================
@@ -28,6 +28,7 @@ class CryptoFallback {
         const result = new Uint8Array(data.length);
         for (let i = 0; i < data.length; i++) {
             result[i] = data[i] ^ encKey[i % encKey.length] ^ key.salt[i % key.salt.length] ^ iv[i % iv.length];
+            if (i % 10000000 === 0) await new Promise(r => setTimeout(r, 0)); // Yield thread
         }
         return result.buffer;
     }
@@ -78,6 +79,27 @@ class CryptoFallback {
             typedArray[i] = Math.floor(Math.random() * 256);
         }
         return typedArray;
+    }
+
+    // High Memory Efficient Binary <-> Base64 Converters
+    static uint8ToBase64(bytes) {
+        let binary = '';
+        const len = bytes.byteLength;
+        const chunkSize = 0x8000; // 32KB Chunk to avoid stack overflow
+        for (let i = 0; i < len; i += chunkSize) {
+            binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+        }
+        return btoa(binary);
+    }
+
+    static base64ToUint8(base64) {
+        const binary = atob(base64);
+        const len = binary.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+            bytes[i] = binary.charCodeAt(i);
+        }
+        return bytes;
     }
 }
 
@@ -213,7 +235,7 @@ class PureZipUnpacker {
 }
 
 // ============================================================================
-// 2. Encryption Engine
+// 2. Encryption Engine (Optimized for High Memory / Large Files)
 // ============================================================================
 class AuthenticatedStorageEngine {
     constructor(heavyKey) { this.heavyKey = heavyKey; }
@@ -225,10 +247,14 @@ class AuthenticatedStorageEngine {
         const key = await CryptoFallback.deriveKey(this.heavyKey, salt);
         const encryptedContent = await CryptoFallback.encrypt(key, iv, binaryBytes);
 
+        // Memory Optimization: Use Base64 string instead of giant JSON Array
+        const encryptedUint8 = new Uint8Array(encryptedContent);
+        const b64Ciphertext = CryptoFallback.uint8ToBase64(encryptedUint8);
+
         const payload = {
             salt: Array.from(salt),
             iv: Array.from(iv),
-            ciphertext: Array.from(new Uint8Array(encryptedContent))
+            ciphertextB64: b64Ciphertext
         };
 
         const jsonString = JSON.stringify(payload);
@@ -248,7 +274,13 @@ class AuthenticatedStorageEngine {
         const data = JSON.parse(payload);
         const salt = new Uint8Array(data.salt);
         const iv = new Uint8Array(data.iv);
-        const ciphertext = new Uint8Array(data.ciphertext);
+        
+        let ciphertext;
+        if (data.ciphertextB64) {
+            ciphertext = CryptoFallback.base64ToUint8(data.ciphertextB64);
+        } else {
+            ciphertext = new Uint8Array(data.ciphertext);
+        }
 
         const key = await CryptoFallback.deriveKey(this.heavyKey, salt);
         const decrypted = await CryptoFallback.decrypt(key, iv, ciphertext);
@@ -538,7 +570,7 @@ class EditableFileManagerUI {
             const item = document.createElement("div");
             item.className = "fm-item";
             item.innerHTML = `
-                <span>${isText ? "📝" : "📄"} ${file.path} <small>(${file.size} B)</small></span>
+                <span>${isText ? "📝" : "📄"} ${file.path} <small>(${(file.size / 1024 / 1024).toFixed(2)} MB)</small></span>
                 <div style="display:flex; gap:4px;">
                     ${isRunnable ? `<button class="btn-fm btn-run" data-idx="${index}">▶ Run</button>` : ""}
                     ${isText ? `<button class="btn-fm btn-edit" data-idx="${index}">✏️ Edit</button>` : ""}
@@ -599,6 +631,10 @@ class EditableFileManagerUI {
     }
 
     async commitAndResync() {
+        const btnSync = this.containerEl.querySelector("#btn-sync");
+        if (btnSync) btnSync.textContent = "⏳ Syncing...";
+        await new Promise(r => setTimeout(r, 10)); // Release thread for UI render
+
         const packer = new PureZipPacker();
         packer.files = this.fileState;
         const zipBytes = packer.buildZipBinary();
@@ -609,6 +645,7 @@ class EditableFileManagerUI {
         if (this.onResyncNeeded) {
             await this.onResyncNeeded(packedJson, this.fileState.length);
         }
+        if (btnSync) btnSync.textContent = "🔄 Re-Sync";
     }
 
     _isTextFile(path) {
@@ -657,7 +694,6 @@ class CachedWasmExecutionEngine {
         } else {
             onStdout(`[Compiler] 🔨 Compiling ${sourcePath}...\n`);
             
-            // Allow UI to breathe
             await new Promise(r => setTimeout(r, 10));
             
             wasmBinary = await this._invokeCompiler(sourceData, onStderr);
