@@ -1,14 +1,9 @@
 /**
- * x.js - Integrated OS-in-Browser Desktop System (Production Unified Code)
- * - Monaco Editor + LSP Snippets Integrations
- * - Native Direct Canvas GPU Pipeline for Linux GUI Binaries
- * - Non-blocking Big-Binary Encryption Engine (Base64 Chunk Processing)
- * - SHA-256 Cached Wasm Execution Engine
- * - Window Manager & Shadow DOM Desktop UI
+ * x.js - Integrated OS-in-Browser Desktop System (Patched & Optimized)
  */
 
 // ============================================================================
-// 0. Fallback Web Crypto Implementation (Optimized for Large Data / Non-blocking)
+// 0. Fallback Web Crypto Implementation (Chunked & Yielding)
 // ============================================================================
 class CryptoFallback {
     static async deriveKey(passphrase, salt) {
@@ -33,7 +28,7 @@ class CryptoFallback {
         const result = new Uint8Array(data.length);
         for (let i = 0; i < data.length; i++) {
             result[i] = data[i] ^ encKey[i % encKey.length] ^ key.salt[i % key.salt.length] ^ iv[i % iv.length];
-            if (i % 10000000 === 0) await new Promise(r => setTimeout(r, 0));
+            if (i > 0 && i % 1000000 === 0) await new Promise(r => setTimeout(r, 0)); // Yield to UI thread
         }
         return result.buffer;
     }
@@ -86,29 +81,37 @@ class CryptoFallback {
         return typedArray;
     }
 
-    static uint8ToBase64(bytes) {
+    // 大容量データ用の非同期 Base64 変換（メインスレッドフリーズ回避）
+    static async uint8ToBase64Async(bytes) {
         let binary = '';
         const len = bytes.byteLength;
-        const chunkSize = 0x8000; // 32KB
+        const chunkSize = 0x4000; // 16KB
         for (let i = 0; i < len; i += chunkSize) {
-            binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+            const chunk = bytes.subarray(i, i + chunkSize);
+            binary += String.fromCharCode.apply(null, chunk);
+            if (i > 0 && i % (1024 * 1024) === 0) {
+                await new Promise(r => setTimeout(r, 0)); // 1MBごとにメインスレッドへ制御を戻す
+            }
         }
         return btoa(binary);
     }
 
-    static base64ToUint8(base64) {
+    static async base64ToUint8Async(base64) {
         const binary = atob(base64);
         const len = binary.length;
         const bytes = new Uint8Array(len);
         for (let i = 0; i < len; i++) {
             bytes[i] = binary.charCodeAt(i);
+            if (i > 0 && i % (1024 * 1024) === 0) {
+                await new Promise(r => setTimeout(r, 0));
+            }
         }
         return bytes;
     }
 }
 
 // ============================================================================
-// 1. Memory-Efficient Pure ZIP Binary Packer & Unpacker
+// 1. Non-blocking Async ZIP Engine
 // ============================================================================
 class PureZipPacker {
     constructor() { this.files = []; }
@@ -118,14 +121,14 @@ class PureZipPacker {
         this.files.push({ path, data: bytes });
     }
 
-    buildZipBinary() {
+    async buildZipBinaryAsync() {
         const localHeaders = [];
         const cdEntries = [];
         let offset = 0;
 
         for (const file of this.files) {
             const nameBytes = new TextEncoder().encode(file.path);
-            const crc = this._crc32(file.data);
+            const crc = await this._crc32Async(file.data);
             const size = file.data.length;
 
             const lh = new Uint8Array(30 + nameBytes.length + size);
@@ -195,12 +198,15 @@ class PureZipPacker {
         return result;
     }
 
-    _crc32(bytes) {
+    async _crc32Async(bytes) {
         let crc = 0xFFFFFFFF;
         for (let i = 0; i < bytes.length; i++) {
             crc ^= bytes[i];
             for (let j = 0; j < 8; j++) {
                 crc = (crc >>> 1) ^ (crc & 1 ? 0xEDB88320 : 0);
+            }
+            if (i > 0 && i % 500000 === 0) {
+                await new Promise(r => setTimeout(r, 0));
             }
         }
         return (crc ^ 0xFFFFFFFF) >>> 0;
@@ -239,7 +245,7 @@ class PureZipUnpacker {
 }
 
 // ============================================================================
-// 2. Encrypted VFS Storage Engine (Base64 Chunked Serialization)
+// 2. Encrypted VFS Storage Engine
 // ============================================================================
 class AuthenticatedStorageEngine {
     constructor(heavyKey) { this.heavyKey = heavyKey; }
@@ -252,7 +258,7 @@ class AuthenticatedStorageEngine {
         const encryptedContent = await CryptoFallback.encrypt(key, iv, binaryBytes);
 
         const encryptedUint8 = new Uint8Array(encryptedContent);
-        const b64Ciphertext = CryptoFallback.uint8ToBase64(encryptedUint8);
+        const b64Ciphertext = await CryptoFallback.uint8ToBase64Async(encryptedUint8);
 
         const payload = {
             salt: Array.from(salt),
@@ -280,7 +286,7 @@ class AuthenticatedStorageEngine {
         
         let ciphertext;
         if (data.ciphertextB64) {
-            ciphertext = CryptoFallback.base64ToUint8(data.ciphertextB64);
+            ciphertext = await CryptoFallback.base64ToUint8Async(data.ciphertextB64);
         } else {
             ciphertext = new Uint8Array(data.ciphertext);
         }
@@ -293,7 +299,7 @@ class AuthenticatedStorageEngine {
 }
 
 // ============================================================================
-// 3. Desktop Window Manager
+// 3. Desktop Window Manager (Fix TDZ / Scope Issues)
 // ============================================================================
 class WindowManager {
     constructor(shadowRoot) {
@@ -388,12 +394,13 @@ class WindowManager {
             <div class="wm-resize-handle wm-rh-br"></div>
         `;
 
-        const contentEl = winEl.querySelector(".wm-content");
-        renderContent(contentEl);
-
         const winInstance = { id, title, el: winEl, isMaximized: false, prevRect: { width, height, x, y }, onResizeCallbacks: [] };
         this.desktopEl.appendChild(winEl);
         this.windows.set(id, winInstance);
+
+        const contentEl = winEl.querySelector(".wm-content");
+        // renderContent に winInstance を渡すことで内部からの安全なアクセスを補償
+        renderContent(contentEl, winInstance);
 
         this._addTaskItem(winInstance);
         this._bindWindowEvents(winInstance);
@@ -571,7 +578,7 @@ class MonacoLspIDEEngine {
             theme: 'vs-dark',
             automaticLayout: true,
             fontSize: 13,
-            minimap: { enabled: false }, // Performance tuning for low-spec end-devices
+            minimap: { enabled: false },
             renderValidationDecorations: "on",
             fontFamily: "Menlo, Monaco, Consolas, 'Courier New', monospace"
         });
@@ -584,7 +591,7 @@ class MonacoLspIDEEngine {
 }
 
 // ============================================================================
-// 5. Native Linux GUI Display Server Bridge (Zero-Copy Canvas Pipeline)
+// 5. Native Linux GUI Display Server Bridge
 // ============================================================================
 class NativeGuiDisplayServer {
     constructor(canvasElement) {
@@ -653,7 +660,7 @@ class NativeGuiDisplayServer {
                     const idx = y * w + x;
                     const dx = x - circleX, dy = y - circleY;
                     if (dx * dx + dy * dy < 400) {
-                        u32[idx] = 0xff00a27a; // ABGR Native Format
+                        u32[idx] = 0xff00a27a; // ABGR Format
                     } else {
                         u32[idx] = 0xff28241a;
                     }
@@ -662,7 +669,7 @@ class NativeGuiDisplayServer {
             this.flush();
         };
 
-        const interval = setInterval(mockNativeRender, 16); // 60 FPS
+        const interval = setInterval(mockNativeRender, 16);
         return () => clearInterval(interval);
     }
 }
@@ -794,7 +801,7 @@ class EditableFileManagerUI {
 
         const packer = new PureZipPacker();
         packer.files = this.fileState;
-        const zipBytes = packer.buildZipBinary();
+        const zipBytes = await packer.buildZipBinaryAsync(); // Async Packer
 
         const authEngine = new AuthenticatedStorageEngine(this.heavyKey);
         const packedJson = await authEngine.encryptAndPack(zipBytes);
@@ -937,7 +944,7 @@ window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
     const defaultPacker = new PureZipPacker();
     defaultPacker.addFile("hello.c", `#include <stdio.h>\n\nint main() {\n    printf("Hello x.js Native Subsystem!\\n");\n    return 0;\n}`);
     defaultPacker.addFile("gui_app.app", "NATIVE_LINUX_GUI_BINARY_MOCK");
-    const initialZipBytes = defaultPacker.buildZipBinary();
+    const initialZipBytes = await defaultPacker.buildZipBinaryAsync();
 
     let currentEncryptedData = await authEngine.encryptAndPack(initialZipBytes);
     let activeFileManager = null;
@@ -984,20 +991,20 @@ window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
                     currentEncryptedData = newEncryptedJson;
                     logToTerminal(`\n[Storage] 🔒 Encrypted & Re-synced ${fileCount} files into VFS.\n`);
                 },
-                // Launch Monaco Editor
+                // Launch Monaco Editor (Fix TDZ by receiving winInstance from parameter)
                 async (filePath, content, onSave) => {
                     logToTerminal(`[IDE] 🚀 Loading Monaco IDE for ${filePath}...\n`);
                     await monacoLsp.initMonaco();
 
                     const winId = `edit-${filePath.replace(/[^a-zA-Z0-9]/g, '_')}`;
-                    const win = wm.createWindow({
+                    wm.createWindow({
                         id: winId,
                         title: `⚡ IDE: ${filePath}`,
                         width: 600,
                         height: 450,
                         x: 80,
                         y: 50,
-                        renderContent: (edContainer) => {
+                        renderContent: (edContainer, createdWin) => {
                             edContainer.innerHTML = `
                                 <style>
                                     .editor-wrap { display: flex; flex-direction: column; height: 100%; gap: 6px; }
@@ -1017,7 +1024,7 @@ window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
 
                             const editor = monacoLsp.createEditor(mount, content, lang, (v) => { currentVal = v; });
 
-                            win.onResizeCallbacks.push(() => editor.layout());
+                            createdWin.onResizeCallbacks.push(() => editor.layout());
 
                             edContainer.querySelector(".btn-save").addEventListener("click", () => {
                                 onSave(currentVal);
@@ -1027,7 +1034,7 @@ window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
                         }
                     });
                 },
-                // Run App (Linux GUI or Wasm Engine)
+                // Run App (Linux GUI Fix)
                 async (filePath) => {
                     if (filePath.endsWith(".app")) {
                         logToTerminal(`\n[Native OS] 🐧 Launching Linux Native GUI Application: ${filePath}\n`);
@@ -1039,7 +1046,7 @@ window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
                             height: 310,
                             x: 120,
                             y: 80,
-                            renderContent: (guiContainer) => {
+                            renderContent: (guiContainer, createdWin) => {
                                 guiContainer.innerHTML = `
                                     <style>
                                         .gui-wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; background: #000; }
@@ -1053,12 +1060,11 @@ window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
                                 const displayServer = new NativeGuiDisplayServer(canvas);
                                 const stopDemo = displayServer.simulateDemoGuiApp();
 
-                                const winRef = wm.windows.get(guiWinId);
-                                const originalClose = winRef.el.querySelector(".wm-btn-close").onclick;
-                                winRef.el.querySelector(".wm-btn-close").onclick = () => {
+                                // 安全に閉じるボタンのイベントを設定
+                                const closeBtn = createdWin.el.querySelector(".wm-btn-close");
+                                closeBtn.addEventListener("click", () => {
                                     stopDemo();
-                                    wm.closeWindow(guiWinId);
-                                };
+                                });
                             }
                         });
                     } else {
