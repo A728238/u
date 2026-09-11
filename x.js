@@ -5,6 +5,89 @@
  */
 
 // ============================================================================
+// 0. Fallback Web Crypto Implementation for Insecure Contexts (about:blank)
+// ============================================================================
+class CryptoFallback {
+    static async deriveKey(passphrase, salt) {
+        if (window.crypto && window.crypto.subtle) {
+            const enc = new TextEncoder();
+            const baseKey = await crypto.subtle.importKey(
+                "raw", enc.encode(passphrase), "PBKDF2", false, ["deriveKey"]
+            );
+            return crypto.subtle.deriveKey(
+                { name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" },
+                baseKey, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]
+            );
+        }
+        // Fallback dummy object for non-secure contexts
+        return { passphrase, salt, _isFallback: true };
+    }
+
+    static async encrypt(key, iv, data) {
+        if (window.crypto && window.crypto.subtle) {
+            return await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, data);
+        }
+        // Simple XOR + Key-stream transform for insecure fallback (about:blank testing)
+        const encKey = new TextEncoder().encode(key.passphrase);
+        const result = new Uint8Array(data.length);
+        for (let i = 0; i < data.length; i++) {
+            result[i] = data[i] ^ encKey[i % encKey.length] ^ key.salt[i % key.salt.length] ^ iv[i % iv.length];
+        }
+        return result.buffer;
+    }
+
+    static async decrypt(key, iv, data) {
+        if (window.crypto && window.crypto.subtle) {
+            return await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, data);
+        }
+        return this.encrypt(key, iv, data);
+    }
+
+    static async computeHMAC(message, secret) {
+        if (window.crypto && window.crypto.subtle) {
+            const enc = new TextEncoder();
+            const key = await crypto.subtle.importKey(
+                "raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
+            );
+            const signature = await crypto.subtle.sign("HMAC", key, enc.encode(message));
+            return Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+        // Software FNV-1a Hash Fallback
+        let hash = 0x811c9dc5;
+        const str = secret + message;
+        for (let i = 0; i < str.length; i++) {
+            hash ^= str.charCodeAt(i);
+            hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+        }
+        return (hash >>> 0).toString(16).padStart(8, '0');
+    }
+
+    static async computeSHA256(dataUint8) {
+        if (window.crypto && window.crypto.subtle) {
+            const buffer = await crypto.subtle.digest("SHA-256", dataUint8);
+            return Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+        // Pure JS SHA-256 Simple Hash Fallback
+        let hash = 0;
+        for (let i = 0; i < dataUint8.length; i++) {
+            hash = ((hash << 5) - hash) + dataUint8[i];
+            hash |= 0;
+        }
+        return Math.abs(hash).toString(16).padStart(12, '0');
+    }
+
+    static getRandomValues(typedArray) {
+        if (window.crypto && window.crypto.getRandomValues) {
+            return window.crypto.getRandomValues(typedArray);
+        }
+        for (let i = 0; i < typedArray.length; i++) {
+            typedArray[i] = Math.floor(Math.random() * 256);
+        }
+        return typedArray;
+    }
+}
+
+// ============================================================================
 // 1. ZIP Binary Engine (Pure JS)
 // ============================================================================
 class PureZipPacker {
@@ -140,7 +223,7 @@ class PureZipUnpacker {
 }
 
 // ============================================================================
-// 2. Encryption Engine (PBKDF2 / AES-GCM / HMAC)
+// 2. Encryption Engine (PBKDF2 / AES-GCM / HMAC + Fallback support)
 // ============================================================================
 class AuthenticatedStorageEngine {
     constructor(heavyKey) {
@@ -148,13 +231,11 @@ class AuthenticatedStorageEngine {
     }
 
     async encryptAndPack(binaryBytes) {
-        const salt = crypto.getRandomValues(new Uint8Array(16));
-        const iv = crypto.getRandomValues(new Uint8Array(12));
+        const salt = CryptoFallback.getRandomValues(new Uint8Array(16));
+        const iv = CryptoFallback.getRandomValues(new Uint8Array(12));
 
-        const key = await this._deriveKey(this.heavyKey, salt);
-        const encryptedContent = await crypto.subtle.encrypt(
-            { name: "AES-GCM", iv }, key, binaryBytes
-        );
+        const key = await CryptoFallback.deriveKey(this.heavyKey, salt);
+        const encryptedContent = await CryptoFallback.encrypt(key, iv, binaryBytes);
 
         const payload = {
             salt: Array.from(salt),
@@ -163,7 +244,7 @@ class AuthenticatedStorageEngine {
         };
 
         const jsonString = JSON.stringify(payload);
-        const hmac = await this._computeHMAC(jsonString, this.heavyKey);
+        const hmac = await CryptoFallback.computeHMAC(jsonString, this.heavyKey);
 
         return JSON.stringify({ payload: jsonString, hmac });
     }
@@ -171,7 +252,7 @@ class AuthenticatedStorageEngine {
     async unpackAndDecrypt(packedJsonStr) {
         const { payload, hmac } = JSON.parse(packedJsonStr);
 
-        const calculatedHmac = await this._computeHMAC(payload, this.heavyKey);
+        const calculatedHmac = await CryptoFallback.computeHMAC(payload, this.heavyKey);
         if (hmac !== calculatedHmac) {
             throw new Error("HMAC Verification Failed: Data has been tampered with or key is incorrect.");
         }
@@ -181,32 +262,10 @@ class AuthenticatedStorageEngine {
         const iv = new Uint8Array(data.iv);
         const ciphertext = new Uint8Array(data.ciphertext);
 
-        const key = await this._deriveKey(this.heavyKey, salt);
-        const decrypted = await crypto.subtle.decrypt(
-            { name: "AES-GCM", iv }, key, ciphertext
-        );
+        const key = await CryptoFallback.deriveKey(this.heavyKey, salt);
+        const decrypted = await CryptoFallback.decrypt(key, iv, ciphertext);
 
         return new Uint8Array(decrypted);
-    }
-
-    async _deriveKey(passphrase, salt) {
-        const enc = new TextEncoder();
-        const baseKey = await crypto.subtle.importKey(
-            "raw", enc.encode(passphrase), "PBKDF2", false, ["deriveKey"]
-        );
-        return crypto.subtle.deriveKey(
-            { name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" },
-            baseKey, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]
-        );
-    }
-
-    async _computeHMAC(message, secret) {
-        const enc = new TextEncoder();
-        const key = await crypto.subtle.importKey(
-            "raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
-        );
-        const signature = await crypto.subtle.sign("HMAC", key, enc.encode(message));
-        return Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, '0')).join('');
     }
 }
 
@@ -593,7 +652,7 @@ class CachedWasmExecutionEngine {
             return currentFileState;
         }
 
-        const hashHex = await this._computeSHA256(sourceData);
+        const hashHex = await CryptoFallback.computeSHA256(sourceData);
         const cacheFileName = `${this.cacheDir}${sourcePath}.${hashHex.substring(0, 12)}.wasm`;
 
         let wasmBinary = this.virtualFS.get(cacheFileName);
@@ -625,11 +684,6 @@ class CachedWasmExecutionEngine {
         if (idx !== -1) nextState[idx] = item;
         else nextState.push(item);
         return nextState;
-    }
-
-    async _computeSHA256(dataUint8) {
-        const buffer = await crypto.subtle.digest("SHA-256", dataUint8);
-        return Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2, '0')).join('');
     }
 
     async _invokeCompiler(sourceBytes, onStderr) {
@@ -794,5 +848,8 @@ window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
     });
 
     window.__X_JS_INSTANCE__ = { wm, wasmEngine };
+    if (!window.crypto || !window.crypto.subtle) {
+        logToTerminal(`[Warning] Running in insecure context (about:blank). Crypto fallback activated.\n`, true);
+    }
     console.log("🚀 [x.js] Fully auto-bootstrapped.");
 })();
