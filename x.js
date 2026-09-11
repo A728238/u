@@ -1,8 +1,7 @@
 /**
- * x.js - Integrated OS-in-Browser Desktop System (Anti-Font-Garbling & Anti-CSP Fix)
- * - Fixed Font Hierarchy: Uses universal system fonts to prevent garbled text/symbols
- * - Enhanced UTF-8 Encoding Pipeline & Canvas Rendering Engine
- * - Dynamic Editor & Terminal Auto-scaling
+ * x.js - Integrated OS-in-Browser Desktop System (Canvas Direct Routing Optimized)
+ * - Anti-Font-Garbling & Anti-CSP Fix
+ * - Direct Canvas Framebuffer Pipeline for Binary/ELF Execution
  */
 
 // ============================================================================
@@ -304,7 +303,6 @@ class WindowManager {
 
     _injectStyles() {
         const style = document.createElement("style");
-        // システムにインストールされているフォントスタックを直接指定し文字化けを防止
         style.textContent = `
             :host, .wm-desktop {
                 font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Meiryo", "MS PGothic", sans-serif;
@@ -521,7 +519,7 @@ class WindowManager {
 }
 
 // ============================================================================
-// 4. Monaco Editor Engine (Monospace Font Fixed)
+// 4. Monaco Editor Engine
 // ============================================================================
 class MonacoLspIDEEngine {
     constructor() {
@@ -601,7 +599,6 @@ class NativeGuiDisplayServer {
         this.frameBuffer = new Uint8ClampedArray(memoryBuffer, offset, width * height * 4);
         this.cachedImgData = new ImageData(this.frameBuffer, width, height);
         
-        // 初回のフォント指定（キャンバス上のテキスト描画文字化け対策）
         this.ctx.font = "14px sans-serif";
         this.ctx.fillStyle = "#ffffff";
     }
@@ -1017,36 +1014,15 @@ window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
                         }
                     });
                 },
-                // Universal Adaptive Execution Router
+                // Universal Adaptive Execution Router (Direct Canvas Routing Optimized)
                 async (file) => {
                     const filePath = file.path;
                     const inspect = NativeBinaryDetector.inspectBinary(file);
 
                     logToTerminal(`\n[Universal Router] 実行ルーティング: ${filePath} (${inspect.type})\n`);
 
-                    if (filePath.includes("code") || filePath.endsWith(".app")) {
-                        logToTerminal(`[Router] Web-IDE エンジンで起動中...\n`);
-                        const textContent = new TextDecoder('utf-8').decode(file.data);
-                        
-                        await monacoLsp.initMonaco();
-                        wm.createWindow({
-                            id: `native-editor-${Date.now()}`,
-                            title: `Web IDE Host: ${filePath}`,
-                            width: 800,
-                            height: 520,
-                            x: 50,
-                            y: 30,
-                            renderContent: (container, winInstance) => {
-                                AntiCspNativeIdeHost.renderNativeIde(container, filePath, textContent, () => {});
-                                const mount = container.querySelector("#native-ide-editor-container");
-                                const editor = monacoLsp.createEditor(mount, textContent, "c");
-                                winInstance.onResizeCallbacks.push(() => editor.layout());
-                            }
-                        });
-                        return;
-                    }
-
-                    if (inspect.type === "ELF_NATIVE") {
+                    // バイナリ／実行可能ファイル（ELF等）の場合はエディタを開かず直接 Canvas GUI ウィンドウを表示
+                    if (inspect.type === "ELF_NATIVE" || inspect.isExecutable) {
                         logToTerminal(`[Router] Direct Canvas Framebuffer パイプラインを起動...\n`);
                         wm.createWindow({
                             id: `gui-app-${Date.now()}`,
@@ -1094,5 +1070,5 @@ window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
     });
 
     window.__X_JS_INSTANCE__ = { wm, wasmEngine, monacoLsp };
-    console.log("x.js Engine successfully booted.");
+    console.log("x.js Engine successfully booted with Direct Canvas Routing.");
 })();
