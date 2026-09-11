@@ -1,9 +1,8 @@
 /**
- * x.js - Integrated OS-in-Browser Desktop System (CSP Safe & Universal Binary Engine)
- * - Anti-CSP Architecture: Zero iframe dependencies to guarantee execution of any binary
- * - Universal Adaptive Execution Router: Auto-routes ELF, WASM, GUI, Shell & Web Apps
- * - Pure Canvas Native GUI Pipeline & Virtual PTY Terminal Integration
- * - Non-blocking Big-Binary Encryption, Monaco Editor & TDZ-Free Window Lifecycle
+ * x.js - Integrated OS-in-Browser Desktop System (Anti-Font-Garbling & Anti-CSP Fix)
+ * - Fixed Font Hierarchy: Uses universal system fonts to prevent garbled text/symbols
+ * - Enhanced UTF-8 Encoding Pipeline & Canvas Rendering Engine
+ * - Dynamic Editor & Terminal Auto-scaling
  */
 
 // ============================================================================
@@ -106,7 +105,7 @@ class CryptoFallback {
 }
 
 // ============================================================================
-// 1. Non-blocking Fast Pure ZIP Packer / Unpacker
+// 1. Fast Pure ZIP Packer / Unpacker
 // ============================================================================
 class PureZipPacker {
     constructor() { this.files = []; }
@@ -225,7 +224,7 @@ class PureZipUnpacker {
             const compSize = this.dv.getUint32(pos + 18, true);
 
             const nameBytes = this.zipBytes.subarray(pos + 30, pos + 30 + nameLen);
-            const path = new TextDecoder().decode(nameBytes);
+            const path = new TextDecoder('utf-8').decode(nameBytes);
 
             const dataStart = pos + 30 + nameLen + extraLen;
             const fileData = this.zipBytes.slice(dataStart, dataStart + compSize);
@@ -292,7 +291,7 @@ class AuthenticatedStorageEngine {
 }
 
 // ============================================================================
-// 3. Desktop Window Manager (TDZ-Free Architecture)
+// 3. Desktop Window Manager (Font-Garbling Safe)
 // ============================================================================
 class WindowManager {
     constructor(shadowRoot) {
@@ -305,11 +304,15 @@ class WindowManager {
 
     _injectStyles() {
         const style = document.createElement("style");
+        // システムにインストールされているフォントスタックを直接指定し文字化けを防止
         style.textContent = `
+            :host, .wm-desktop {
+                font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Meiryo", "MS PGothic", sans-serif;
+            }
             .wm-desktop {
                 position: relative; width: 100%; height: 720px;
                 background: #1a1b26; border: 1px solid #414868;
-                border-radius: 8px; overflow: hidden; font-family: monospace;
+                border-radius: 8px; overflow: hidden; box-sizing: border-box;
             }
             .wm-window {
                 position: absolute; background: #24283c; border: 1px solid #414868;
@@ -376,9 +379,9 @@ class WindowManager {
             <div class="wm-titlebar">
                 <span class="wm-title">${title}</span>
                 <div class="wm-controls">
-                    <button class="wm-btn wm-btn-min"></button>
-                    <button class="wm-btn wm-btn-max"></button>
-                    <button class="wm-btn wm-btn-close"></button>
+                    <button class="wm-btn wm-btn-min" title="最小化"></button>
+                    <button class="wm-btn wm-btn-max" title="最大化"></button>
+                    <button class="wm-btn wm-btn-close" title="閉じる"></button>
                 </div>
             </div>
             <div class="wm-content"></div>
@@ -518,7 +521,7 @@ class WindowManager {
 }
 
 // ============================================================================
-// 4. Monaco Editor Engine (Shadow DOM / Inline Host)
+// 4. Monaco Editor Engine (Monospace Font Fixed)
 // ============================================================================
 class MonacoLspIDEEngine {
     constructor() {
@@ -571,7 +574,7 @@ class MonacoLspIDEEngine {
             automaticLayout: true,
             fontSize: 13,
             minimap: { enabled: false },
-            fontFamily: "Menlo, Monaco, Consolas, 'Courier New', monospace"
+            fontFamily: "'Consolas', 'Courier New', 'Yu Gothic UI', 'Hiragino Kaku Gothic ProN', monospace"
         });
 
         if (onChange) {
@@ -597,6 +600,10 @@ class NativeGuiDisplayServer {
         this.canvas.height = height;
         this.frameBuffer = new Uint8ClampedArray(memoryBuffer, offset, width * height * 4);
         this.cachedImgData = new ImageData(this.frameBuffer, width, height);
+        
+        // 初回のフォント指定（キャンバス上のテキスト描画文字化け対策）
+        this.ctx.font = "14px sans-serif";
+        this.ctx.fillStyle = "#ffffff";
     }
 
     flush() {
@@ -609,19 +616,19 @@ class AntiCspNativeIdeHost {
     static renderNativeIde(containerEl, fileName, initialCode, onSave) {
         containerEl.innerHTML = `
             <style>
-                .native-ide { display: flex; flex-direction: column; height: 100%; background: #1e1e1e; font-family: monospace; color: #d4d4d4; }
+                .native-ide { display: flex; flex-direction: column; height: 100%; background: #1e1e1e; font-family: sans-serif; color: #d4d4d4; }
                 .ide-toolbar { background: #333333; padding: 6px 12px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #454545; }
                 .ide-title { font-weight: bold; font-size: 0.85rem; color: #9cdcfe; }
                 .ide-actions { display: flex; gap: 8px; }
-                .ide-btn { background: #0e639c; color: white; border: none; padding: 4px 10px; border-radius: 2px; cursor: pointer; font-size: 0.75rem; }
+                .ide-btn { background: #0e639c; color: white; border: none; padding: 4px 10px; border-radius: 2px; cursor: pointer; font-size: 0.75rem; font-family: sans-serif; }
                 .ide-btn:hover { background: #1177bb; }
                 .ide-editor-area { flex: 1; width: 100%; height: 100%; }
             </style>
             <div class="native-ide">
                 <div class="ide-toolbar">
-                    <span class="ide-title">💙 Native Web IDE Host — ${fileName}</span>
+                    <span class="ide-title">IDE エディタ — ${fileName}</span>
                     <div class="ide-actions">
-                        <button class="ide-btn" id="native-ide-save">💾 Save & Compile</button>
+                        <button class="ide-btn" id="native-ide-save">保存 & コンパイル</button>
                     </div>
                 </div>
                 <div class="ide-editor-area" id="native-ide-editor-container"></div>
@@ -640,16 +647,11 @@ class NativeBinaryDetector {
         let type = "UNKNOWN";
 
         if (data && data.length >= 4) {
-            // ELF (Linux Binary)
             if (data[0] === 0x7F && data[1] === 0x45 && data[2] === 0x4C && data[3] === 0x46) {
                 type = "ELF_NATIVE";
-            }
-            // WebAssembly Binary
-            else if (data[0] === 0x00 && data[1] === 0x61 && data[2] === 0x73 && data[3] === 0x6D) {
+            } else if (data[0] === 0x00 && data[1] === 0x61 && data[2] === 0x73 && data[3] === 0x6D) {
                 type = "WASM_BINARY";
-            }
-            // Shell Script (#!)
-            else if (data[0] === 0x23 && data[1] === 0x21) {
+            } else if (data[0] === 0x23 && data[1] === 0x21) {
                 type = "SHELL_SCRIPT";
             }
         }
@@ -684,11 +686,11 @@ class EditableFileManagerUI {
     _renderLayout() {
         this.containerEl.innerHTML = `
             <style>
-                .fm-wrap { font-family: monospace; color: #a9b1d6; height: 100%; display: flex; flex-direction: column; }
+                .fm-wrap { font-family: system-ui, sans-serif; color: #a9b1d6; height: 100%; display: flex; flex-direction: column; }
                 .fm-header { display: flex; justify-content: space-between; margin-bottom: 10px; border-bottom: 1px solid #292e42; padding-bottom: 6px; }
                 .fm-item { display: flex; justify-content: space-between; align-items: center; padding: 4px 6px; border-radius: 4px; margin-bottom: 2px; }
                 .fm-item:hover { background: #1f2335; }
-                .btn-fm { background: #3b4261; color: #7aa2f7; border: none; padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 0.75rem; font-family: monospace; }
+                .btn-fm { background: #3b4261; color: #7aa2f7; border: none; padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 0.75rem; font-family: system-ui, sans-serif; }
                 .btn-edit { background: #e0af68; color: #15161e; font-weight: bold; }
                 .btn-run { background: #9ece6a; color: #15161e; font-weight: bold; }
                 .btn-del { background: #f7768e; color: #15161e; font-weight: bold; }
@@ -697,10 +699,10 @@ class EditableFileManagerUI {
             </style>
             <div class="fm-wrap">
                 <div class="fm-header">
-                    <span>📂 VFS Files: <strong id="fm-count">${this.fileState.length}</strong></span>
+                    <span>VFS ファイル一覧: <strong id="fm-count">${this.fileState.length}</strong></span>
                     <div>
-                        <button class="btn-fm" id="btn-add">➕ Upload</button>
-                        <button class="btn-fm btn-resync" id="btn-sync">🔄 Re-Sync</button>
+                        <button class="btn-fm" id="btn-add">アップロード</button>
+                        <button class="btn-fm btn-resync" id="btn-sync">同期 (Re-Sync)</button>
                         <input type="file" id="fm-file-input" multiple style="display:none;">
                     </div>
                 </div>
@@ -725,11 +727,11 @@ class EditableFileManagerUI {
             const item = document.createElement("div");
             item.className = "fm-item";
             item.innerHTML = `
-                <span>${inspect.type.includes("ELF") ? "⚙️" : isText ? "📝" : "📄"} ${file.path} <small style="color:#565f89;">(${inspect.type})</small></span>
+                <span>${file.path} <small style="color:#565f89;">(${inspect.type})</small></span>
                 <div style="display:flex; gap:4px;">
-                    ${inspect.isExecutable ? `<button class="btn-fm btn-run" data-idx="${index}">▶ Execute</button>` : ""}
-                    ${isText ? `<button class="btn-fm btn-edit" data-idx="${index}">✏️ Edit</button>` : ""}
-                    <button class="btn-fm btn-del" data-idx="${index}">🗑️</button>
+                    ${inspect.isExecutable ? `<button class="btn-fm btn-run" data-idx="${index}">実行</button>` : ""}
+                    ${isText ? `<button class="btn-fm btn-edit" data-idx="${index}">編集</button>` : ""}
+                    <button class="btn-fm btn-del" data-idx="${index}">削除</button>
                 </div>
             `;
             listEl.appendChild(item);
@@ -739,7 +741,7 @@ class EditableFileManagerUI {
             b.addEventListener("click", (e) => {
                 const idx = parseInt(e.target.getAttribute("data-idx"), 10);
                 const file = this.fileState[idx];
-                const text = new TextDecoder().decode(file.data);
+                const text = new TextDecoder('utf-8').decode(file.data);
                 if (this.onOpenEditor) {
                     this.onOpenEditor(file.path, text, (newText) => {
                         const newBytes = new TextEncoder().encode(newText);
@@ -785,7 +787,7 @@ class EditableFileManagerUI {
 
     async commitAndResync() {
         const btnSync = this.containerEl.querySelector("#btn-sync");
-        if (btnSync) btnSync.textContent = "⏳ Syncing...";
+        if (btnSync) btnSync.textContent = "同期中...";
         await new Promise(r => setTimeout(r, 10));
 
         const packer = new PureZipPacker();
@@ -798,7 +800,7 @@ class EditableFileManagerUI {
         if (this.onResyncNeeded) {
             await this.onResyncNeeded(packedJson, this.fileState.length);
         }
-        if (btnSync) btnSync.textContent = "🔄 Re-Sync";
+        if (btnSync) btnSync.textContent = "同期 (Re-Sync)";
     }
 
     _isTextFile(path) {
@@ -808,7 +810,7 @@ class EditableFileManagerUI {
 }
 
 // ============================================================================
-// 7. Cached Universal Wasm Recompiler & PTY Engine
+// 7. Universal Wasm Recompiler & PTY Engine
 // ============================================================================
 class CachedWasmExecutionEngine {
     constructor() {
@@ -826,22 +828,22 @@ class CachedWasmExecutionEngine {
         const fileObj = currentFileState.find(f => f.path === sourcePath);
 
         if (!fileObj) {
-            onStderr(`[Error] Binary/File not found in VFS: ${sourcePath}\n`);
+            onStderr(`[エラー] VFS内に指定されたバイナリが見つかりません: ${sourcePath}\n`);
             return currentFileState;
         }
 
         const inspection = NativeBinaryDetector.inspectBinary(fileObj);
-        onStdout(`[Universal Engine] Target inspected as: ${inspection.type}\n`);
+        onStdout(`[Universal Engine] バイナリ解析完了: ${inspection.type}\n`);
 
         if (inspection.type === "WASM_BINARY") {
-            onStdout(`[Runner] ⚡ Executing Native Wasm module directly...\n`);
+            onStdout(`[Runner] Executing Native Wasm module...\n`);
             await this._executeWasm(fileObj.data, onStdout, onStderr);
             return currentFileState;
         }
 
         if (inspection.type === "ELF_NATIVE") {
-            onStdout(`[Recompiler] ⚙️ Processing Native ELF Executable Binary...\n`);
-            onStdout(`[Recompiler] 🔄 Translating ELF machine code instructions to WebAssembly JIT Blocks...\n`);
+            onStdout(`[Recompiler] Processing Native ELF Executable...\n`);
+            onStdout(`[Recompiler] Translating instructions to Wasm JIT Blocks...\n`);
             await new Promise(r => setTimeout(r, 200));
         }
 
@@ -850,15 +852,15 @@ class CachedWasmExecutionEngine {
         let wasmBinary = this.virtualFS.get(cacheFileName);
 
         if (wasmBinary) {
-            onStdout(`[Cache] ⚡ Cache hit! Executing Wasm binary: ${cacheFileName}\n`);
+            onStdout(`[Cache] Cache hit! Executing: ${cacheFileName}\n`);
         } else {
-            onStdout(`[JIT/Compiler] 🔨 Compiling binary payload to Wasm sandbox...\n`);
+            onStdout(`[JIT/Compiler] Compiling binary payload...\n`);
             await new Promise(r => setTimeout(r, 100));
             
             wasmBinary = await this._invokeCompiler(fileObj.data);
             currentFileState = this._saveToCacheState(currentFileState, cacheFileName, wasmBinary);
             this.syncVFS(currentFileState);
-            onStdout(`[Cache] 💾 Cached binary target successfully.\n`);
+            onStdout(`[Cache] Cached binary successfully.\n`);
         }
 
         await this._executeWasm(wasmBinary, onStdout, onStderr);
@@ -887,10 +889,10 @@ class CachedWasmExecutionEngine {
     async _executeWasm(wasmBytes, onStdout, onStderr) {
         try {
             const module = await WebAssembly.instantiate(wasmBytes);
-            onStdout(`[Execution] Wasm Execution Context initialized.\n`);
+            onStdout(`[Execution] Wasm Context Initialized.\n`);
             if (module.instance.exports.add) {
                 const res = module.instance.exports.add(40, 2);
-                onStdout(`[Execution Output] Result add(40, 2) = ${res}\n`);
+                onStdout(`[Execution Output] add(40, 2) = ${res}\n`);
             }
             onStdout(`Program exited with status code 0.\n`);
         } catch (e) {
@@ -911,7 +913,7 @@ window.EditableFileManagerUI = EditableFileManagerUI;
 window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
 
 // ============================================================================
-// 8. Integrated Desktop Bootloader & Universal Adaptive Router
+// 8. Integrated Desktop Bootloader
 // ============================================================================
 (async function autoBoot() {
     if (document.readyState === 'loading') {
@@ -956,7 +958,7 @@ window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
     // Main Desktop Workspace
     wm.createWindow({
         id: "main-workspace",
-        title: "⚡ x.js Universal OS & Binary Runtime",
+        title: "x.js Desktop System",
         width: 700,
         height: 580,
         x: 20,
@@ -964,14 +966,14 @@ window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
         renderContent: (container) => {
             container.innerHTML = `
                 <style>
-                    .ws-container { display: flex; flex-direction: column; gap: 8px; height: 100%; }
+                    .ws-container { display: flex; flex-direction: column; gap: 8px; height: 100%; font-family: system-ui, sans-serif; }
                     .ws-card { background: #1a1b26; border: 1px solid #292e42; padding: 8px; border-radius: 4px; }
-                    .term-box { background: #0f1017; color: #7aa2f7; font-family: monospace; padding: 8px; border-radius: 4px; flex: 1; overflow-y: auto; white-space: pre-wrap; font-size: 0.8rem; }
+                    .term-box { background: #0f1017; color: #7aa2f7; font-family: 'Consolas', 'Courier New', monospace; padding: 8px; border-radius: 4px; flex: 1; overflow-y: auto; white-space: pre-wrap; font-size: 0.8rem; }
                 </style>
                 <div class="ws-container">
                     <div class="ws-card" id="fm-root"></div>
-                    <div style="font-size: 0.75rem; color: #737aa2; font-weight: bold;">SYSTEM CONSOLE (UNIVERSAL PTY)</div>
-                    <div class="term-box" id="x-terminal-output">> x.js Universal Binary Subsystem Booted. Ready for any binary.\n</div>
+                    <div style="font-size: 0.75rem; color: #737aa2; font-weight: bold;">システムコンソール</div>
+                    <div class="term-box" id="x-terminal-output">> x.js システムが正常に起動しました。\n</div>
                 </div>
             `;
 
@@ -982,17 +984,17 @@ window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
                 SECRET_KEY,
                 async (newEncryptedJson, fileCount) => {
                     currentEncryptedData = newEncryptedJson;
-                    logToTerminal(`\n[Storage] 🔒 Encrypted & Re-synced ${fileCount} files into VFS.\n`);
+                    logToTerminal(`\n[Storage] 暗号化完了: ${fileCount} 件のファイルをVFSに同期しました。\n`);
                 },
-                // Launch Anti-CSP IDE
+                // Launch IDE
                 async (filePath, content, onSave) => {
-                    logToTerminal(`[IDE] 🚀 Launching Anti-CSP Native IDE Host for ${filePath}...\n`);
+                    logToTerminal(`[IDE] エディタを起動中: ${filePath}...\n`);
                     await monacoLsp.initMonaco();
 
                     const winId = `edit-${filePath.replace(/[^a-zA-Z0-9]/g, '_')}`;
                     wm.createWindow({
                         id: winId,
-                        title: `⚡ Native IDE: ${filePath}`,
+                        title: `IDE: ${filePath}`,
                         width: 650,
                         height: 480,
                         x: 70,
@@ -1009,28 +1011,27 @@ window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
 
                             edContainer.querySelector("#native-ide-save").addEventListener("click", () => {
                                 onSave(currentVal);
-                                logToTerminal(`[IDE] 📝 Saved changes to ${filePath}\n`);
+                                logToTerminal(`[IDE] 保存完了: ${filePath}\n`);
                                 wm.closeWindow(winId);
                             });
                         }
                     });
                 },
-                // Universal Adaptive Execution Router (Any Binary Execution Engine)
+                // Universal Adaptive Execution Router
                 async (file) => {
                     const filePath = file.path;
                     const inspect = NativeBinaryDetector.inspectBinary(file);
 
-                    logToTerminal(`\n[Universal Router] ⚙️ Routing Binary Target: ${filePath} (${inspect.type})\n`);
+                    logToTerminal(`\n[Universal Router] 実行ルーティング: ${filePath} (${inspect.type})\n`);
 
-                    // 1. Code Editor / Web Application (Pure DOM Native Host Engine)
                     if (filePath.includes("code") || filePath.endsWith(".app")) {
-                        logToTerminal(`[Router] ⚡ Host Native Web-IDE Engine (100% Anti-CSP Safe)...\n`);
-                        const textContent = new TextDecoder().decode(file.data);
+                        logToTerminal(`[Router] Web-IDE エンジンで起動中...\n`);
+                        const textContent = new TextDecoder('utf-8').decode(file.data);
                         
                         await monacoLsp.initMonaco();
                         wm.createWindow({
                             id: `native-editor-${Date.now()}`,
-                            title: `💙 Native Web IDE Host: ${filePath}`,
+                            title: `Web IDE Host: ${filePath}`,
                             width: 800,
                             height: 520,
                             x: 50,
@@ -1045,12 +1046,11 @@ window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
                         return;
                     }
 
-                    // 2. Heavy Linux Binary Executable / Native Application
                     if (inspect.type === "ELF_NATIVE") {
-                        logToTerminal(`[Router] 🖥️ Routing to Zero-Copy Canvas Framebuffer Engine...\n`);
+                        logToTerminal(`[Router] Direct Canvas Framebuffer パイプラインを起動...\n`);
                         wm.createWindow({
                             id: `gui-app-${Date.now()}`,
-                            title: `🌐 Native Linux GUI Application: ${filePath}`,
+                            title: `Linux GUI アプリケーション: ${filePath}`,
                             width: 720,
                             height: 480,
                             x: 90,
@@ -1058,8 +1058,8 @@ window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
                             renderContent: (container) => {
                                 container.innerHTML = `
                                     <div style="display:flex; flex-direction:column; height:100%; background:#000;">
-                                        <div style="background:#1f2335; color:#7aa2f7; padding:4px 8px; font-size:0.75rem;">
-                                            ⚡ Canvas Framebuffer Rendering Mode (Pure In-Browser Direct Pipeline)
+                                        <div style="background:#1f2335; color:#7aa2f7; padding:4px 8px; font-size:0.75rem; font-family:sans-serif;">
+                                            Canvas Framebuffer Rendering (Direct Pipeline)
                                         </div>
                                         <canvas id="gui-canvas" style="flex:1; width:100%; object-fit:contain;"></canvas>
                                     </div>
@@ -1075,8 +1075,7 @@ window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
                         return;
                     }
 
-                    // 3. Wasm / Source Executable Target
-                    logToTerminal(`[Router] 🔨 Invoking Universal Cached Recompiler / Wasm Sandbox...\n`);
+                    logToTerminal(`[Router] Wasm サンドボックスで処理を実行中...\n`);
                     const updatedState = await wasmEngine.compileAndRun(
                         filePath,
                         activeFileManager.fileState,
@@ -1095,5 +1094,5 @@ window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
     });
 
     window.__X_JS_INSTANCE__ = { wm, wasmEngine, monacoLsp };
-    console.log("🚀 [x.js] Fully Integrated Desktop Engine Bootstrapped (Anti-CSP Compliant).");
+    console.log("x.js Engine successfully booted.");
 })();
