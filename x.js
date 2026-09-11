@@ -1,5 +1,6 @@
 /**
  * x.js - Integrated OS-in-Browser Desktop System
+ * - Fixed Universal Execution Router (Routed "code"/"editor" to Monaco IDE)
  * - Canvas Display Fix (Alpha Channel & RequestAnimationFrame Loop)
  * - Monaco Layout Initialization Fix
  */
@@ -274,7 +275,7 @@ class AuthenticatedStorageEngine {
         const data = JSON.parse(payload);
         const salt = new Uint8Array(data.salt);
         const iv = new Uint8Array(data.iv);
-        
+
         let ciphertext;
         if (data.ciphertextB64) {
             ciphertext = await CryptoFallback.base64ToUint8Async(data.ciphertextB64);
@@ -575,7 +576,6 @@ class MonacoLspIDEEngine {
             fontFamily: "'Consolas', 'Courier New', 'Yu Gothic UI', 'Hiragino Kaku Gothic ProN', monospace"
         });
 
-        // DOM描画直後の白画面/描画崩れ対策
         setTimeout(() => editor.layout(), 50);
 
         if (onChange) {
@@ -853,7 +853,7 @@ class CachedWasmExecutionEngine {
         } else {
             onStdout(`[JIT/Compiler] Compiling binary payload...\n`);
             await new Promise(r => setTimeout(r, 100));
-            
+
             wasmBinary = await this._invokeCompiler(fileObj.data);
             currentFileState = this._saveToCacheState(currentFileState, cacheFileName, wasmBinary);
             this.syncVFS(currentFileState);
@@ -936,6 +936,7 @@ window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
     defaultPacker.addFile("hello.c", `#include <stdio.h>\n\nint main() {\n    printf("Hello Universal x.js Engine!\\n");\n    return 0;\n}`);
     defaultPacker.addFile("code-editor", new Uint8Array([0x7F, 0x45, 0x4C, 0x46, 0x02, 0x01])); 
     defaultPacker.addFile("linux_gui_app.bin", "NATIVE_LINUX_GUI_BINARY_MOCK");
+    defaultPacker.addFile("code", "# VS Code Launcher");
     const initialZipBytes = await defaultPacker.buildZipBinaryAsync();
 
     let currentEncryptedData = await authEngine.encryptAndPack(initialZipBytes);
@@ -1021,6 +1022,56 @@ window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
 
                     logToTerminal(`\n[Universal Router] 実行ルーティング: ${filePath} (${inspect.type})\n`);
 
+                    // 1. "code" や "editor" 関連、またはテキスト/ソースコードの場合は Monaco IDE を起動
+                    const isEditorApp = filePath.toLowerCase().includes("code") || filePath.toLowerCase().includes("editor");
+                    if (isEditorApp || inspect.type === "C_SOURCE" || inspect.type === "JS_SOURCE" || inspect.type === "TEXT_OR_DATA") {
+                        logToTerminal(`[Router] Monaco IDE エディタモジュールを起動中...\n`);
+
+                        const textContent = (file.data && file.data.length > 0) 
+                            ? new TextDecoder('utf-8').decode(file.data) 
+                            : `// ${filePath}\n// IDE Editor Engine initialized.\n\n#include <stdio.h>\n\nint main() {\n    printf("Hello World!\\n");\n    return 0;\n}`;
+
+                        await monacoLsp.initMonaco();
+
+                        const winId = `ide-${Date.now()}`;
+                        wm.createWindow({
+                            id: winId,
+                            title: `VS Code / Monaco IDE - ${filePath}`,
+                            width: 680,
+                            height: 460,
+                            x: 80,
+                            y: 40,
+                            renderContent: (edContainer, winInstance) => {
+                                AntiCspNativeIdeHost.renderNativeIde(edContainer, filePath, textContent, (savedText) => {
+                                    const newBytes = new TextEncoder().encode(savedText);
+                                    file.data = newBytes;
+                                    file.size = newBytes.length;
+                                    logToTerminal(`[IDE] 保存完了: ${filePath}\n`);
+                                });
+
+                                const mount = edContainer.querySelector("#native-ide-editor-container");
+                                const ext = filePath.split('.').pop().toLowerCase();
+                                const lang = ext === 'c' ? 'c' : ext === 'js' ? 'javascript' : 'cpp';
+
+                                const editor = monacoLsp.createEditor(mount, textContent, lang, (v) => {
+                                    // Live edit listener
+                                });
+
+                                winInstance.onResizeCallbacks.push(() => editor.layout());
+
+                                edContainer.querySelector("#native-ide-save").addEventListener("click", () => {
+                                    const val = editor.getValue();
+                                    const newBytes = new TextEncoder().encode(val);
+                                    file.data = newBytes;
+                                    file.size = newBytes.length;
+                                    logToTerminal(`[IDE] 保存完了: ${filePath}\n`);
+                                });
+                            }
+                        });
+                        return;
+                    }
+
+                    // 2. GUIバイナリの場合のみ Direct Canvas Pipeline を起動
                     if (inspect.type === "ELF_NATIVE" || inspect.isExecutable) {
                         logToTerminal(`[Router] Direct Canvas Framebuffer パイプラインを起動...\n`);
                         wm.createWindow({
@@ -1041,20 +1092,17 @@ window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
                                 `;
                                 const canvas = container.querySelector("#gui-canvas");
                                 const display = new NativeGuiDisplayServer(canvas);
-                                
-                                // バッファ作成 ＋ 初期色（アルファ値255）の流し込み
+
                                 const buf = new ArrayBuffer(640 * 480 * 4);
                                 const pixelView = new Uint8ClampedArray(buf);
                                 for (let i = 0; i < pixelView.length; i += 4) {
-                                    pixelView[i]     = 30;  // R
-                                    pixelView[i + 1] = 30;  // G
-                                    pixelView[i + 2] = 46;  // B
-                                    pixelView[i + 3] = 255; // Alpha
+                                    pixelView[i]     = 30;
+                                    pixelView[i + 1] = 30;
+                                    pixelView[i + 2] = 46;
+                                    pixelView[i + 3] = 255;
                                 }
                                 display.attachSharedFramebuffer(640, 480, buf);
-                                display.flush();
 
-                                // requestAnimationFrame による描画ループ化
                                 let animId;
                                 const renderLoop = () => {
                                     display.flush();
@@ -1062,7 +1110,6 @@ window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
                                 };
                                 animId = requestAnimationFrame(renderLoop);
 
-                                // ウィンドウ破棄時にループをキャンセル
                                 winInstance.onCloseCallbacks.push(() => {
                                     cancelAnimationFrame(animId);
                                 });
@@ -1071,6 +1118,7 @@ window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
                         return;
                     }
 
+                    // 3. Wasm サンドボックス実行
                     logToTerminal(`[Router] Wasm サンドボックスで処理を実行中...\n`);
                     const updatedState = await wasmEngine.compileAndRun(
                         filePath,
