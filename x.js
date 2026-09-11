@@ -1,12 +1,7 @@
 /**
- * x.js - Integrated Client-Side Desktop Architecture
+ * x.js - Integrated Client-Side Desktop Architecture (Auto-Executable)
  * 
- * Includes:
- * 1. PureZipPacker & PureZipUnpacker (ZIP Binary Engine)
- * 2. AuthenticatedStorageEngine (PBKDF2 / AES-GCM / HMAC Encryption)
- * 3. WindowManager (Multi-window Desktop UI in Shadow DOM)
- * 4. EditableFileManagerUI (File Tree & Inline Text/Code Editor)
- * 5. CachedWasmExecutionEngine (SHA-256 Hash Cache Wasm Build/Exec Engine)
+ * ユーザーが import("...") を実行するだけで自動で起動します。
  */
 
 // ============================================================================
@@ -14,7 +9,7 @@
 // ============================================================================
 class PureZipPacker {
     constructor() {
-        this.files = []; // Array<{path: string, data: Uint8Array}>
+        this.files = [];
     }
 
     addFile(path, data) {
@@ -32,45 +27,43 @@ class PureZipPacker {
             const crc = this._crc32(file.data);
             const size = file.data.length;
 
-            // Local Header
             const lh = new Uint8Array(30 + nameBytes.length + size);
             const dv = new DataView(lh.buffer);
-            dv.setUint32(0, 0x04034b50, true);  // Local File Header Signature
-            dv.setUint16(4, 20, true);          // Version needed
-            dv.setUint16(6, 0, true);           // Flags
-            dv.setUint16(8, 0, true);           // Compression (0 = Store)
-            dv.setUint16(10, 0, true);          // Mod time
-            dv.setUint16(12, 0, true);          // Mod date
-            dv.setUint32(14, crc, true);        // CRC-32
-            dv.setUint32(18, size, true);       // Compressed size
-            dv.setUint32(22, size, true);       // Uncompressed size
+            dv.setUint32(0, 0x04034b50, true);
+            dv.setUint16(4, 20, true);
+            dv.setUint16(6, 0, true);
+            dv.setUint16(8, 0, true);
+            dv.setUint16(10, 0, true);
+            dv.setUint16(12, 0, true);
+            dv.setUint32(14, crc, true);
+            dv.setUint32(18, size, true);
+            dv.setUint32(22, size, true);
             dv.setUint16(26, nameBytes.length, true);
-            dv.setUint16(28, 0, true);          // Extra field length
+            dv.setUint16(28, 0, true);
             lh.set(nameBytes, 30);
             lh.set(file.data, 30 + nameBytes.length);
 
             localHeaders.push(lh);
 
-            // Central Directory Header
             const cd = new Uint8Array(46 + nameBytes.length);
             const cdDv = new DataView(cd.buffer);
-            cdDv.setUint32(0, 0x02014b50, true); // Central Directory Signature
-            cdDv.setUint16(4, 20, true);         // Version made by
-            cdDv.setUint16(6, 20, true);         // Version needed
-            cdDv.setUint16(8, 0, true);          // Flags
-            cdDv.setUint16(10, 0, true);         // Compression
-            cdDv.setUint16(12, 0, true);         // Mod time
-            cdDv.setUint16(14, 0, true);         // Mod date
-            cdDv.setUint32(16, crc, true);       // CRC-32
-            cdDv.setUint32(20, size, true);      // Compressed size
-            cdDv.setUint32(24, size, true);      // Uncompressed size
+            cdDv.setUint32(0, 0x02014b50, true);
+            cdDv.setUint16(4, 20, true);
+            cdDv.setUint16(6, 20, true);
+            cdDv.setUint16(8, 0, true);
+            cdDv.setUint16(10, 0, true);
+            cdDv.setUint16(12, 0, true);
+            cdDv.setUint16(14, 0, true);
+            cdDv.setUint32(16, crc, true);
+            cdDv.setUint32(20, size, true);
+            cdDv.setUint32(24, size, true);
             cdDv.setUint16(28, nameBytes.length, true);
-            cdDv.setUint16(30, 0, true);         // Extra field length
-            cdDv.setUint16(32, 0, true);         // Comment length
-            cdDv.setUint16(34, 0, true);         // Disk start
-            cdDv.setUint16(36, 0, true);         // Internal attr
-            cdDv.setUint32(38, 0, true);         // External attr
-            cdDv.setUint32(42, offset, true);    // Offset of local header
+            cdDv.setUint16(30, 0, true);
+            cdDv.setUint16(32, 0, true);
+            cdDv.setUint16(34, 0, true);
+            cdDv.setUint16(36, 0, true);
+            cdDv.setUint32(38, 0, true);
+            cdDv.setUint32(42, offset, true);
             cd.set(nameBytes, 46);
 
             cdEntries.push(cd);
@@ -81,19 +74,17 @@ class PureZipPacker {
         let cdSize = 0;
         cdEntries.forEach(cd => cdSize += cd.length);
 
-        // End of Central Directory Record
         const eocd = new Uint8Array(22);
         const eocdDv = new DataView(eocd.buffer);
-        eocdDv.setUint32(0, 0x06054b50, true);   // EOCD Signature
-        eocdDv.setUint16(4, 0, true);            // Disk number
-        eocdDv.setUint16(6, 0, true);            // Start disk
-        eocdDv.setUint16(8, this.files.length, true); // Total entries disk
-        eocdDv.setUint16(10, this.files.length, true);// Total entries
-        eocdDv.setUint32(12, cdSize, true);      // CD size
-        eocdDv.setUint32(16, cdOffset, true);    // CD offset
-        eocdDv.setUint16(20, 0, true);           // Comment length
+        eocdDv.setUint32(0, 0x06054b50, true);
+        eocdDv.setUint16(4, 0, true);
+        eocdDv.setUint16(6, 0, true);
+        eocdDv.setUint16(8, this.files.length, true);
+        eocdDv.setUint16(10, this.files.length, true);
+        eocdDv.setUint32(12, cdSize, true);
+        eocdDv.setUint32(16, cdOffset, true);
+        eocdDv.setUint16(20, 0, true);
 
-        // Combine all arrays
         const totalSize = offset + cdSize + 22;
         const result = new Uint8Array(totalSize);
         let currentPos = 0;
@@ -129,7 +120,7 @@ class PureZipUnpacker {
 
         while (pos < this.zipBytes.length - 30) {
             const sig = this.dv.getUint32(pos, true);
-            if (sig !== 0x04034b50) break; // Local Header Signature
+            if (sig !== 0x04034b50) break;
 
             const nameLen = this.dv.getUint16(pos + 26, true);
             const extraLen = this.dv.getUint16(pos + 28, true);
@@ -235,7 +226,7 @@ class WindowManager {
         const style = document.createElement("style");
         style.textContent = `
             .wm-desktop {
-                position: relative; width: 100%; height: 620px;
+                position: relative; width: 100%; height: 600px;
                 background: #1a1b26; border: 1px solid #414868;
                 border-radius: 8px; overflow: hidden; font-family: monospace;
             }
@@ -281,8 +272,7 @@ class WindowManager {
             desktop = document.createElement("div");
             desktop.className = "wm-desktop";
             desktop.innerHTML = `<div class="wm-taskbar"></div>`;
-            const container = this.shadowRoot.getElementById("file-list-container") || this.shadowRoot.querySelector(".desktop") || this.shadowRoot;
-            container.appendChild(desktop);
+            this.shadowRoot.appendChild(desktop);
         }
         this.desktopEl = desktop;
         this.taskbarEl = desktop.querySelector(".wm-taskbar");
@@ -440,7 +430,7 @@ class WindowManager {
 }
 
 // ============================================================================
-// 4. File Manager & Inline Code Editor Component
+// 4. File Manager Component
 // ============================================================================
 class EditableFileManagerUI {
     constructor(containerEl, heavyKey, onResyncNeeded, onOpenEditor) {
@@ -471,10 +461,10 @@ class EditableFileManagerUI {
             </style>
             <div class="fm-wrap">
                 <div class="fm-header">
-                    <span>📂 ファイル数: ${this.fileState.length}</span>
+                    <span>📂 Files: ${this.fileState.length}</span>
                     <div>
-                        <button class="btn-fm" id="btn-add">➕ 追加</button>
-                        <button class="btn-fm btn-resync" id="btn-sync">🔄 再同期</button>
+                        <button class="btn-fm" id="btn-add">➕ Add</button>
+                        <button class="btn-fm btn-resync" id="btn-sync">🔄 Re-Sync</button>
                         <input type="file" id="fm-file-input" multiple style="display:none;">
                     </div>
                 </div>
@@ -497,8 +487,8 @@ class EditableFileManagerUI {
             item.innerHTML = `
                 <span>${isText ? "📝" : "📄"} ${file.path} (${file.size} B)</span>
                 <div>
-                    ${isText ? `<button class="btn-fm btn-edit" data-idx="${index}">✏️ 編集</button>` : ""}
-                    <button class="btn-fm btn-del" data-idx="${index}">🗑️ 削除</button>
+                    ${isText ? `<button class="btn-fm btn-edit" data-idx="${index}">✏️ Edit</button>` : ""}
+                    <button class="btn-fm btn-del" data-idx="${index}">🗑️ Delete</button>
                 </div>
             `;
             listEl.appendChild(item);
@@ -590,10 +580,8 @@ class CachedWasmExecutionEngine {
         const cacheFileName = `${this.cacheDir}${sourcePath}.${hashHex.substring(0, 12)}.wasm`;
 
         let wasmBinary = this.virtualFS.get(cacheFileName);
-        let isCached = false;
 
         if (wasmBinary) {
-            isCached = true;
             onStdout(`[Cache] ⚡ Loaded cached Wasm binary: ${cacheFileName}\n`);
         } else {
             onStdout(`[Compiler] 🔨 Compiling ${sourcePath}...\n`);
@@ -648,3 +636,48 @@ window.AuthenticatedStorageEngine = AuthenticatedStorageEngine;
 window.WindowManager = WindowManager;
 window.EditableFileManagerUI = EditableFileManagerUI;
 window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
+
+// ============================================================================
+// 6. Auto Bootloader (import アクセス時に自動起動)
+// ============================================================================
+(async function autoBoot() {
+    if (document.readyState === 'loading') {
+        await new Promise(resolve => window.addEventListener('DOMContentLoaded', resolve));
+    }
+
+    let appRoot = document.getElementById("x-js-app-root");
+    if (!appRoot) {
+        appRoot = document.createElement("div");
+        appRoot.id = "x-js-app-root";
+        document.body.appendChild(appRoot);
+    }
+
+    const shadow = appRoot.shadowRoot || appRoot.attachShadow({ mode: "open" });
+    const wm = new WindowManager(shadow);
+
+    wm.createWindow({
+        id: "welcome-win",
+        title: "x.js Workspace",
+        width: 480,
+        height: 320,
+        x: 40,
+        y: 40,
+        renderContent: (container) => {
+            container.innerHTML = `
+                <div style="font-family: monospace; padding: 10px;">
+                    <h3 style="color: #7aa2f7; margin-top: 0;">⚡ x.js Environment Ready</h3>
+                    <p><code>import</code> 経由で正常に自動初期化されました。</p>
+                    <ul>
+                        <li>PureZip Binary Engine</li>
+                        <li>PBKDF2 / AES-GCM / HMAC Storage</li>
+                        <li>Shadow DOM Window Manager</li>
+                        <li>Wasm Cache Compiler Engine</li>
+                    </ul>
+                </div>
+            `;
+        }
+    });
+
+    window.__X_JS_INSTANCE__ = { wm };
+    console.log("🚀 [x.js] Auto-bootstrapped successfully.");
+})();
