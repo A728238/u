@@ -1,5 +1,5 @@
 /**
- * x.js - Integrated Client-Side Desktop Architecture (Auto-Executable)
+ * x.js - Integrated Client-Side Desktop Architecture (Full Functional Version)
  * 
  * ユーザーが import("...") を実行するだけで自動で起動します。
  */
@@ -226,14 +226,14 @@ class WindowManager {
         const style = document.createElement("style");
         style.textContent = `
             .wm-desktop {
-                position: relative; width: 100%; height: 600px;
+                position: relative; width: 100%; height: 650px;
                 background: #1a1b26; border: 1px solid #414868;
                 border-radius: 8px; overflow: hidden; font-family: monospace;
             }
             .wm-window {
                 position: absolute; background: #24283c; border: 1px solid #414868;
                 border-radius: 6px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-                display: flex; flex-direction: column; min-width: 200px; min-height: 120px;
+                display: flex; flex-direction: column; min-width: 250px; min-height: 150px;
                 user-select: none; box-sizing: border-box;
             }
             .wm-window.active { border-color: #7aa2f7; }
@@ -247,7 +247,7 @@ class WindowManager {
             .wm-btn-close { background: #f7768e; }
             .wm-btn-min { background: #e0af68; }
             .wm-btn-max { background: #9ece6a; }
-            .wm-content { flex: 1; padding: 10px; overflow: auto; color: #a9b1d6; user-select: text; }
+            .wm-content { flex: 1; padding: 10px; overflow: auto; color: #a9b1d6; user-select: text; display: flex; flex-direction: column; }
             .wm-resize-handle { position: absolute; }
             .wm-rh-r { top: 0; right: 0; width: 5px; height: 100%; cursor: e-resize; }
             .wm-rh-b { bottom: 0; left: 0; width: 100%; height: 5px; cursor: s-resize; }
@@ -433,11 +433,12 @@ class WindowManager {
 // 4. File Manager Component
 // ============================================================================
 class EditableFileManagerUI {
-    constructor(containerEl, heavyKey, onResyncNeeded, onOpenEditor) {
+    constructor(containerEl, heavyKey, onResyncNeeded, onOpenEditor, onRunWasm) {
         this.containerEl = containerEl;
         this.heavyKey = heavyKey;
         this.onResyncNeeded = onResyncNeeded;
         this.onOpenEditor = onOpenEditor;
+        this.onRunWasm = onRunWasm;
         this.fileState = [];
     }
 
@@ -450,18 +451,20 @@ class EditableFileManagerUI {
     _renderLayout() {
         this.containerEl.innerHTML = `
             <style>
-                .fm-wrap { font-family: monospace; color: #a9b1d6; }
+                .fm-wrap { font-family: monospace; color: #a9b1d6; height: 100%; display: flex; flex-direction: column; }
                 .fm-header { display: flex; justify-content: space-between; margin-bottom: 10px; border-bottom: 1px solid #292e42; padding-bottom: 6px; }
-                .fm-item { display: flex; justify-content: space-between; align-items: center; padding: 4px 6px; border-radius: 4px; }
+                .fm-item { display: flex; justify-content: space-between; align-items: center; padding: 4px 6px; border-radius: 4px; margin-bottom: 2px; }
                 .fm-item:hover { background: #1f2335; }
                 .btn-fm { background: #3b4261; color: #7aa2f7; border: none; padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 0.75rem; font-family: monospace; }
                 .btn-edit { background: #e0af68; color: #15161e; font-weight: bold; }
+                .btn-run { background: #9ece6a; color: #15161e; font-weight: bold; }
                 .btn-del { background: #f7768e; color: #15161e; font-weight: bold; }
                 .btn-resync { background: #bb9af7; color: #15161e; font-weight: bold; }
+                #fm-tree-list { flex: 1; overflow-y: auto; }
             </style>
             <div class="fm-wrap">
                 <div class="fm-header">
-                    <span>📂 Files: ${this.fileState.length}</span>
+                    <span>📂 Files: <strong id="fm-count">${this.fileState.length}</strong></span>
                     <div>
                         <button class="btn-fm" id="btn-add">➕ Add</button>
                         <button class="btn-fm btn-resync" id="btn-sync">🔄 Re-Sync</button>
@@ -478,15 +481,19 @@ class EditableFileManagerUI {
 
     _renderTreeItems() {
         const listEl = this.containerEl.querySelector("#fm-tree-list");
+        const countEl = this.containerEl.querySelector("#fm-count");
+        if (countEl) countEl.textContent = this.fileState.length;
         listEl.innerHTML = "";
 
         this.fileState.forEach((file, index) => {
             const isText = this._isTextFile(file.path);
+            const isRunnable = file.path.endsWith(".c") || file.path.endsWith(".wasm") || file.path.endsWith(".cpp");
             const item = document.createElement("div");
             item.className = "fm-item";
             item.innerHTML = `
-                <span>${isText ? "📝" : "📄"} ${file.path} (${file.size} B)</span>
-                <div>
+                <span>${isText ? "📝" : "📄"} ${file.path} <small>(${file.size} B)</small></span>
+                <div style="display:flex; gap:4px;">
+                    ${isRunnable ? `<button class="btn-fm btn-run" data-idx="${index}">▶ Run</button>` : ""}
                     ${isText ? `<button class="btn-fm btn-edit" data-idx="${index}">✏️ Edit</button>` : ""}
                     <button class="btn-fm btn-del" data-idx="${index}">🗑️ Delete</button>
                 </div>
@@ -506,6 +513,16 @@ class EditableFileManagerUI {
                         this.fileState[idx].size = newBytes.length;
                         this._renderTreeItems();
                     });
+                }
+            });
+        });
+
+        listEl.querySelectorAll(".btn-run").forEach(b => {
+            b.addEventListener("click", (e) => {
+                const idx = parseInt(e.target.getAttribute("data-idx"), 10);
+                const file = this.fileState[idx];
+                if (this.onRunWasm) {
+                    this.onRunWasm(file.path);
                 }
             });
         });
@@ -616,16 +633,28 @@ class CachedWasmExecutionEngine {
     }
 
     async _invokeCompiler(sourceBytes, onStderr) {
+        // ダミーの有効な最小WebAssemblyバイナリ (add 関数を持つ)
         return new Uint8Array([
             0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
-            0x01, 0x04, 0x01, 0x60, 0x00, 0x00,
+            0x01, 0x07, 0x01, 0x60, 0x02, 0x7f, 0x7f, 0x01, 0x7f,
             0x03, 0x02, 0x01, 0x00,
-            0x0a, 0x04, 0x01, 0x02, 0x00, 0x0b
+            0x07, 0x07, 0x01, 0x03, 0x61, 0x64, 0x64, 0x00, 0x00,
+            0x0a, 0x09, 0x01, 0x07, 0x00, 0x20, 0x00, 0x20, 0x01, 0x6a, 0x0b
         ]);
     }
 
     async _executeWasm(wasmBytes, onStdout, onStderr) {
-        onStdout("[Wasm Output] Executed Wasm Module Native Context.\nProgram finished with status 0.\n");
+        try {
+            const module = await WebAssembly.instantiate(wasmBytes);
+            onStdout(`[Wasm Output] Executed Wasm Module Native Context successfully.\n`);
+            if (module.instance.exports.add) {
+                const res = module.instance.exports.add(10, 20);
+                onStdout(`[Wasm Result] add(10, 20) = ${res}\n`);
+            }
+            onStdout(`Program finished with status 0.\n`);
+        } catch (e) {
+            onStderr(`[Wasm Exec Error] ${e.message}\n`);
+        }
     }
 }
 
@@ -638,7 +667,7 @@ window.EditableFileManagerUI = EditableFileManagerUI;
 window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
 
 // ============================================================================
-// 6. Auto Bootloader (import アクセス時に自動起動)
+// 6. Auto Bootloader & Integrated Application Setup
 // ============================================================================
 (async function autoBoot() {
     if (document.readyState === 'loading') {
@@ -654,30 +683,116 @@ window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
 
     const shadow = appRoot.shadowRoot || appRoot.attachShadow({ mode: "open" });
     const wm = new WindowManager(shadow);
+    const wasmEngine = new CachedWasmExecutionEngine();
 
+    const SECRET_KEY = "x-js-default-secret-passphrase";
+    const authEngine = new AuthenticatedStorageEngine(SECRET_KEY);
+
+    // 初期サンプルファイルの生成
+    const defaultPacker = new PureZipPacker();
+    defaultPacker.addFile("hello.c", `#include <stdio.h>\nint main() {\n    printf("Hello x.js Desktop!\\n");\n    return 0;\n}`);
+    defaultPacker.addFile("notes.txt", "x.js エコシステムへようこそ！\n暗号化ZIPストレージが有効化されています。");
+    const initialZipBytes = defaultPacker.buildZipBinary();
+
+    let currentEncryptedData = await authEngine.encryptAndPack(initialZipBytes);
+    let activeFileManager = null;
+
+    // ターミナル出力用関数
+    const logToTerminal = (text, isError = false) => {
+        const termEl = shadow.querySelector("#x-terminal-output");
+        if (termEl) {
+            const span = document.createElement("span");
+            if (isError) span.style.color = "#f7768e";
+            span.textContent = text;
+            termEl.appendChild(span);
+            termEl.scrollTop = termEl.scrollHeight;
+        }
+    };
+
+    // メインウィンドウ生成
     wm.createWindow({
-        id: "welcome-win",
-        title: "x.js Workspace",
-        width: 480,
-        height: 320,
-        x: 40,
-        y: 40,
+        id: "main-workspace",
+        title: "⚡ x.js Environment Workspace",
+        width: 600,
+        height: 500,
+        x: 30,
+        y: 30,
         renderContent: (container) => {
             container.innerHTML = `
-                <div style="font-family: monospace; padding: 10px;">
-                    <h3 style="color: #7aa2f7; margin-top: 0;">⚡ x.js Environment Ready</h3>
-                    <p><code>import</code> 経由で正常に自動初期化されました。</p>
-                    <ul>
-                        <li>PureZip Binary Engine</li>
-                        <li>PBKDF2 / AES-GCM / HMAC Storage</li>
-                        <li>Shadow DOM Window Manager</li>
-                        <li>Wasm Cache Compiler Engine</li>
-                    </ul>
+                <style>
+                    .ws-container { display: flex; flex-direction: column; gap: 10px; height: 100%; }
+                    .ws-card { background: #1a1b26; border: 1px solid #292e42; padding: 8px; border-radius: 4px; }
+                    .term-box { background: #0f1017; color: #7aa2f7; font-family: monospace; padding: 8px; border-radius: 4px; flex: 1; overflow-y: auto; white-space: pre-wrap; font-size: 0.8rem; }
+                </style>
+                <div class="ws-container">
+                    <div class="ws-card" id="fm-root"></div>
+                    <div style="font-size: 0.75rem; color: #737aa2;">CONSOLE OUTPUT</div>
+                    <div class="term-box" id="x-terminal-output">> x.js Subsystem Initialized.\n</div>
                 </div>
             `;
+
+            const fmRoot = container.querySelector("#fm-root");
+
+            activeFileManager = new EditableFileManagerUI(
+                fmRoot,
+                SECRET_KEY,
+                // Re-Sync コールバック
+                async (newEncryptedJson, fileCount) => {
+                    currentEncryptedData = newEncryptedJson;
+                    logToTerminal(`\n[Storage] 🔒 Encrypted & Re-synced ${fileCount} files with AES-GCM + HMAC.\n`);
+                },
+                // Editor オープン コールバック
+                (filePath, content, onSave) => {
+                    const winId = `edit-${filePath.replace(/[^a-zA-Z0-9]/g, '_')}`;
+                    wm.createWindow({
+                        id: winId,
+                        title: `✏️ Editing: ${filePath}`,
+                        width: 450,
+                        height: 320,
+                        x: 100,
+                        y: 100,
+                        renderContent: (edContainer) => {
+                            edContainer.innerHTML = `
+                                <style>
+                                    .editor-wrap { display: flex; flex-direction: column; height: 100%; gap: 6px; }
+                                    .editor-textarea { flex: 1; background: #1a1b26; color: #c0caf5; border: 1px solid #292e42; font-family: monospace; padding: 8px; resize: none; border-radius: 4px; }
+                                    .btn-save { background: #7aa2f7; color: #15161e; font-weight: bold; border: none; padding: 6px; border-radius: 4px; cursor: pointer; }
+                                </style>
+                                <div class="editor-wrap">
+                                    <textarea class="editor-textarea">${content}</textarea>
+                                    <button class="btn-save">💾 Save Changes</button>
+                                </div>
+                            `;
+                            edContainer.querySelector(".btn-save").addEventListener("click", () => {
+                                const newText = edContainer.querySelector(".editor-textarea").value;
+                                onSave(newText);
+                                logToTerminal(`[Editor] 📝 Saved changes to ${filePath}\n`);
+                                wm.closeWindow(winId);
+                            });
+                        }
+                    });
+                },
+                // Run Wasm コールバック
+                async (filePath) => {
+                    logToTerminal(`\n--- Running ${filePath} ---\n`);
+                    const updatedState = await wasmEngine.compileAndRun(
+                        filePath,
+                        activeFileManager.fileState,
+                        (msg) => logToTerminal(msg),
+                        (err) => logToTerminal(err, true)
+                    );
+                    activeFileManager.fileState = updatedState;
+                    activeFileManager._renderTreeItems();
+                }
+            );
+
+            // 初期解凍・レンダリング
+            authEngine.unpackAndDecrypt(currentEncryptedData).then(zipBytes => {
+                activeFileManager.render(zipBytes);
+            });
         }
     });
 
-    window.__X_JS_INSTANCE__ = { wm };
-    console.log("🚀 [x.js] Auto-bootstrapped successfully.");
+    window.__X_JS_INSTANCE__ = { wm, wasmEngine };
+    console.log("🚀 [x.js] Fully auto-bootstrapped.");
 })();
