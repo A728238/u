@@ -1,7 +1,7 @@
 /**
- * x.js - Integrated OS-in-Browser Desktop System (Canvas Direct Routing Optimized)
- * - Anti-Font-Garbling & Anti-CSP Fix
- * - Direct Canvas Framebuffer Pipeline for Binary/ELF Execution
+ * x.js - Integrated OS-in-Browser Desktop System
+ * - Canvas Display Fix (Alpha Channel & RequestAnimationFrame Loop)
+ * - Monaco Layout Initialization Fix
  */
 
 // ============================================================================
@@ -290,7 +290,7 @@ class AuthenticatedStorageEngine {
 }
 
 // ============================================================================
-// 3. Desktop Window Manager (Font-Garbling Safe)
+// 3. Desktop Window Manager
 // ============================================================================
 class WindowManager {
     constructor(shadowRoot) {
@@ -575,6 +575,9 @@ class MonacoLspIDEEngine {
             fontFamily: "'Consolas', 'Courier New', 'Yu Gothic UI', 'Hiragino Kaku Gothic ProN', monospace"
         });
 
+        // DOM描画直後の白画面/描画崩れ対策
+        setTimeout(() => editor.layout(), 50);
+
         if (onChange) {
             editor.onDidChangeModelContent(() => onChange(editor.getValue()));
         }
@@ -598,9 +601,6 @@ class NativeGuiDisplayServer {
         this.canvas.height = height;
         this.frameBuffer = new Uint8ClampedArray(memoryBuffer, offset, width * height * 4);
         this.cachedImgData = new ImageData(this.frameBuffer, width, height);
-        
-        this.ctx.font = "14px sans-serif";
-        this.ctx.fillStyle = "#ffffff";
     }
 
     flush() {
@@ -1014,38 +1014,58 @@ window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
                         }
                     });
                 },
-                // Universal Adaptive Execution Router (Direct Canvas Routing Optimized)
+                // Universal Adaptive Execution Router
                 async (file) => {
                     const filePath = file.path;
                     const inspect = NativeBinaryDetector.inspectBinary(file);
 
                     logToTerminal(`\n[Universal Router] 実行ルーティング: ${filePath} (${inspect.type})\n`);
 
-                    // バイナリ／実行可能ファイル（ELF等）の場合はエディタを開かず直接 Canvas GUI ウィンドウを表示
                     if (inspect.type === "ELF_NATIVE" || inspect.isExecutable) {
                         logToTerminal(`[Router] Direct Canvas Framebuffer パイプラインを起動...\n`);
                         wm.createWindow({
                             id: `gui-app-${Date.now()}`,
-                            title: `Linux GUI アプリケーション: ${filePath}`,
+                            title: `GUI アプリケーション: ${filePath}`,
                             width: 720,
                             height: 480,
                             x: 90,
                             y: 50,
-                            renderContent: (container) => {
+                            renderContent: (container, winInstance) => {
                                 container.innerHTML = `
                                     <div style="display:flex; flex-direction:column; height:100%; background:#000;">
                                         <div style="background:#1f2335; color:#7aa2f7; padding:4px 8px; font-size:0.75rem; font-family:sans-serif;">
                                             Canvas Framebuffer Rendering (Direct Pipeline)
                                         </div>
-                                        <canvas id="gui-canvas" style="flex:1; width:100%; object-fit:contain;"></canvas>
+                                        <canvas id="gui-canvas" style="flex:1; width:100%; height:100%; object-fit:contain;"></canvas>
                                     </div>
                                 `;
                                 const canvas = container.querySelector("#gui-canvas");
                                 const display = new NativeGuiDisplayServer(canvas);
+                                
+                                // バッファ作成 ＋ 初期色（アルファ値255）の流し込み
                                 const buf = new ArrayBuffer(640 * 480 * 4);
+                                const pixelView = new Uint8ClampedArray(buf);
+                                for (let i = 0; i < pixelView.length; i += 4) {
+                                    pixelView[i]     = 30;  // R
+                                    pixelView[i + 1] = 30;  // G
+                                    pixelView[i + 2] = 46;  // B
+                                    pixelView[i + 3] = 255; // Alpha
+                                }
                                 display.attachSharedFramebuffer(640, 480, buf);
-                                const interval = setInterval(() => display.flush(), 16);
-                                return () => clearInterval(interval);
+                                display.flush();
+
+                                // requestAnimationFrame による描画ループ化
+                                let animId;
+                                const renderLoop = () => {
+                                    display.flush();
+                                    animId = requestAnimationFrame(renderLoop);
+                                };
+                                animId = requestAnimationFrame(renderLoop);
+
+                                // ウィンドウ破棄時にループをキャンセル
+                                winInstance.onCloseCallbacks.push(() => {
+                                    cancelAnimationFrame(animId);
+                                });
                             }
                         });
                         return;
