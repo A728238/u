@@ -1,8 +1,6 @@
 /**
- * x.js - Integrated OS-in-Browser Desktop System
- * - Fixed Universal Execution Router (Routed "code"/"editor" to Monaco IDE without binary distortion)
- * - Canvas Display Fix (Alpha Channel & RequestAnimationFrame Loop)
- * - Monaco Layout & Shadow DOM Mount Initialization Fix
+ * x.js - Integrated OS-in-Browser Desktop System (Optimized & Complete)
+ * - Complete integration of Crypto, VFS Engine, Window Manager, Monaco IDE, Canvas Pipeline, and Wasm Execution Engine.
  */
 
 // ============================================================================
@@ -29,7 +27,7 @@ class CryptoFallback {
         const result = new Uint8Array(data.length);
         for (let i = 0; i < data.length; i++) {
             result[i] = data[i] ^ encKey[i % encKey.length] ^ key.salt[i % key.salt.length] ^ iv[i % iv.length];
-            if (i > 0 && i % 1000000 === 0) await new Promise(r => setTimeout(r, 0));
+            if (i > 0 && i % 2000000 === 0) await new Promise(r => setTimeout(r, 0));
         }
         return result.buffer;
     }
@@ -87,7 +85,7 @@ class CryptoFallback {
         for (let i = 0; i < len; i += chunkSize) {
             const chunk = bytes.subarray(i, i + chunkSize);
             binary += String.fromCharCode.apply(null, chunk);
-            if (i > 0 && i % (2 * 1024 * 1024) === 0) await new Promise(r => setTimeout(r, 0));
+            if (i > 0 && i % (4 * 1024 * 1024) === 0) await new Promise(r => setTimeout(r, 0));
         }
         return btoa(binary);
     }
@@ -98,7 +96,7 @@ class CryptoFallback {
         const bytes = new Uint8Array(len);
         for (let i = 0; i < len; i++) {
             bytes[i] = binary.charCodeAt(i);
-            if (i > 0 && i % (2 * 1024 * 1024) === 0) await new Promise(r => setTimeout(r, 0));
+            if (i > 0 && i % (4 * 1024 * 1024) === 0) await new Promise(r => setTimeout(r, 0));
         }
         return bytes;
     }
@@ -116,78 +114,79 @@ class PureZipPacker {
     }
 
     async buildZipBinaryAsync() {
-        const localHeaders = [];
-        const cdEntries = [];
-        let offset = 0;
+        const enc = new TextEncoder();
+        let totalOffset = 0;
+        const prepared = [];
 
         for (const file of this.files) {
-            const nameBytes = new TextEncoder().encode(file.path);
+            const nameBytes = enc.encode(file.path);
             const crc = await this._crc32Async(file.data);
             const size = file.data.length;
-
-            const lh = new Uint8Array(30 + nameBytes.length + size);
-            const dv = new DataView(lh.buffer);
-            dv.setUint32(0, 0x04034b50, true);
-            dv.setUint16(4, 20, true);
-            dv.setUint16(6, 0, true);
-            dv.setUint16(8, 0, true);
-            dv.setUint16(10, 0, true);
-            dv.setUint16(12, 0, true);
-            dv.setUint32(14, crc, true);
-            dv.setUint32(18, size, true);
-            dv.setUint32(22, size, true);
-            dv.setUint16(26, nameBytes.length, true);
-            dv.setUint16(28, 0, true);
-            lh.set(nameBytes, 30);
-            lh.set(file.data, 30 + nameBytes.length);
-            localHeaders.push(lh);
-
-            const cd = new Uint8Array(46 + nameBytes.length);
-            const cdDv = new DataView(cd.buffer);
-            cdDv.setUint32(0, 0x02014b50, true);
-            cdDv.setUint16(4, 20, true);
-            cdDv.setUint16(6, 20, true);
-            cdDv.setUint16(8, 0, true);
-            cdDv.setUint16(10, 0, true);
-            cdDv.setUint16(12, 0, true);
-            cdDv.setUint16(14, 0, true);
-            cdDv.setUint32(16, crc, true);
-            cdDv.setUint32(20, size, true);
-            cdDv.setUint32(24, size, true);
-            cdDv.setUint16(28, nameBytes.length, true);
-            cdDv.setUint16(30, 0, true);
-            cdDv.setUint16(32, 0, true);
-            cdDv.setUint16(34, 0, true);
-            cdDv.setUint16(36, 0, true);
-            cdDv.setUint32(38, 0, true);
-            cdDv.setUint32(42, offset, true);
-            cd.set(nameBytes, 46);
-            cdEntries.push(cd);
-            offset += lh.length;
+            prepared.push({ file, nameBytes, crc, size, offset: totalOffset });
+            totalOffset += 30 + nameBytes.length + size;
         }
 
-        const cdOffset = offset;
+        const cdOffset = totalOffset;
         let cdSize = 0;
-        cdEntries.forEach(cd => cdSize += cd.length);
+        for (const item of prepared) {
+            cdSize += 46 + item.nameBytes.length;
+        }
 
-        const eocd = new Uint8Array(22);
-        const eocdDv = new DataView(eocd.buffer);
-        eocdDv.setUint32(0, 0x06054b50, true);
-        eocdDv.setUint16(4, 0, true);
-        eocdDv.setUint16(6, 0, true);
-        eocdDv.setUint16(8, this.files.length, true);
-        eocdDv.setUint16(10, this.files.length, true);
-        eocdDv.setUint32(12, cdSize, true);
-        eocdDv.setUint32(16, cdOffset, true);
-        eocdDv.setUint16(20, 0, true);
-
-        const totalSize = offset + cdSize + 22;
+        const totalSize = cdOffset + cdSize + 22;
         const result = new Uint8Array(totalSize);
-        let currentPos = 0;
+        const dv = new DataView(result.buffer);
 
-        localHeaders.forEach(lh => { result.set(lh, currentPos); currentPos += lh.length; });
-        cdEntries.forEach(cd => { result.set(cd, currentPos); currentPos += cd.length; });
-        result.set(eocd, currentPos);
+        // Build Local Headers + Data
+        for (const item of prepared) {
+            let p = item.offset;
+            dv.setUint32(p, 0x04034b50, true);
+            dv.setUint16(p + 4, 20, true);
+            dv.setUint16(p + 6, 0, true);
+            dv.setUint16(p + 8, 0, true);
+            dv.setUint16(p + 10, 0, true);
+            dv.setUint16(p + 12, 0, true);
+            dv.setUint32(p + 14, item.crc, true);
+            dv.setUint32(p + 18, item.size, true);
+            dv.setUint32(p + 22, item.size, true);
+            dv.setUint16(p + 26, item.nameBytes.length, true);
+            dv.setUint16(p + 28, 0, true);
+            result.set(item.nameBytes, p + 30);
+            result.set(item.file.data, p + 30 + item.nameBytes.length);
+        }
+
+        // Build Central Directory
+        let cdPos = cdOffset;
+        for (const item of prepared) {
+            dv.setUint32(cdPos, 0x02014b50, true);
+            dv.setUint16(cdPos + 4, 20, true);
+            dv.setUint16(cdPos + 6, 20, true);
+            dv.setUint16(cdPos + 8, 0, true);
+            dv.setUint16(cdPos + 10, 0, true);
+            dv.setUint16(cdPos + 12, 0, true);
+            dv.setUint16(cdPos + 14, 0, true);
+            dv.setUint32(cdPos + 16, item.crc, true);
+            dv.setUint32(cdPos + 20, item.size, true);
+            dv.setUint32(cdPos + 24, item.size, true);
+            dv.setUint16(cdPos + 28, item.nameBytes.length, true);
+            dv.setUint16(cdPos + 30, 0, true);
+            dv.setUint16(cdPos + 32, 0, true);
+            dv.setUint16(cdPos + 34, 0, true);
+            dv.setUint16(cdPos + 36, 0, true);
+            dv.setUint32(cdPos + 38, 0, true);
+            dv.setUint32(cdPos + 42, item.offset, true);
+            result.set(item.nameBytes, cdPos + 46);
+            cdPos += 46 + item.nameBytes.length;
+        }
+
+        // Build EOCD
+        dv.setUint32(cdPos, 0x06054b50, true);
+        dv.setUint16(cdPos + 4, 0, true);
+        dv.setUint16(cdPos + 6, 0, true);
+        dv.setUint16(cdPos + 8, this.files.length, true);
+        dv.setUint16(cdPos + 10, this.files.length, true);
+        dv.setUint32(cdPos + 12, cdSize, true);
+        dv.setUint32(cdPos + 16, cdOffset, true);
+        dv.setUint16(cdPos + 20, 0, true);
 
         return result;
     }
@@ -199,7 +198,7 @@ class PureZipPacker {
             for (let j = 0; j < 8; j++) {
                 crc = (crc >>> 1) ^ (crc & 1 ? 0xEDB88320 : 0);
             }
-            if (i > 0 && i % 1000000 === 0) await new Promise(r => setTimeout(r, 0));
+            if (i > 0 && i % 2000000 === 0) await new Promise(r => setTimeout(r, 0));
         }
         return (crc ^ 0xFFFFFFFF) >>> 0;
     }
@@ -214,6 +213,7 @@ class PureZipUnpacker {
     extractFiles() {
         const files = [];
         let pos = 0;
+        const dec = new TextDecoder('utf-8');
 
         while (pos < this.zipBytes.length - 30) {
             const sig = this.dv.getUint32(pos, true);
@@ -224,7 +224,7 @@ class PureZipUnpacker {
             const compSize = this.dv.getUint32(pos + 18, true);
 
             const nameBytes = this.zipBytes.subarray(pos + 30, pos + 30 + nameLen);
-            const path = new TextDecoder('utf-8').decode(nameBytes);
+            const path = dec.decode(nameBytes);
 
             const dataStart = pos + 30 + nameLen + extraLen;
             const fileData = this.zipBytes.slice(dataStart, dataStart + compSize);
@@ -276,12 +276,9 @@ class AuthenticatedStorageEngine {
         const salt = new Uint8Array(data.salt);
         const iv = new Uint8Array(data.iv);
 
-        let ciphertext;
-        if (data.ciphertextB64) {
-            ciphertext = await CryptoFallback.base64ToUint8Async(data.ciphertextB64);
-        } else {
-            ciphertext = new Uint8Array(data.ciphertext);
-        }
+        const ciphertext = data.ciphertextB64
+            ? await CryptoFallback.base64ToUint8Async(data.ciphertextB64)
+            : new Uint8Array(data.ciphertext);
 
         const key = await CryptoFallback.deriveKey(this.heavyKey, salt);
         const decrypted = await CryptoFallback.decrypt(key, iv, ciphertext);
@@ -306,7 +303,7 @@ class WindowManager {
         const style = document.createElement("style");
         style.textContent = `
             :host, .wm-desktop {
-                font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Meiryo", "MS PGothic", sans-serif;
+                font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif;
             }
             .wm-desktop {
                 position: relative; width: 100%; height: 720px;
@@ -453,8 +450,8 @@ class WindowManager {
 
         titlebar.addEventListener("mousedown", (e) => {
             if (e.target.classList.contains("wm-btn")) return;
-            let startX = e.clientX, startY = e.clientY;
-            let initialLeft = win.el.offsetLeft, initialTop = win.el.offsetTop;
+            const startX = e.clientX, startY = e.clientY;
+            const initialLeft = win.el.offsetLeft, initialTop = win.el.offsetTop;
 
             const onMouseMove = (me) => {
                 win.el.style.left = `${initialLeft + (me.clientX - startX)}px`;
@@ -475,8 +472,8 @@ class WindowManager {
         const bindResize = (handleEl, resizeX, resizeY) => {
             handleEl.addEventListener("mousedown", (e) => {
                 e.stopPropagation();
-                let startX = e.clientX, startY = e.clientY;
-                let startW = win.el.offsetWidth, startH = win.el.offsetHeight;
+                const startX = e.clientX, startY = e.clientY;
+                const startW = win.el.offsetWidth, startH = win.el.offsetHeight;
 
                 const onMouseMove = (me) => {
                     if (resizeX) win.el.style.width = `${Math.max(250, startW + (me.clientX - startX))}px`;
@@ -574,7 +571,7 @@ class MonacoLspIDEEngine {
             automaticLayout: true,
             fontSize: 13,
             minimap: { enabled: false },
-            fontFamily: "'Consolas', 'Courier New', 'Yu Gothic UI', 'Hiragino Kaku Gothic ProN', monospace"
+            fontFamily: "'Consolas', 'Courier New', 'Yu Gothic UI', monospace"
         });
 
         setTimeout(() => editor.layout(), 100);
@@ -1031,7 +1028,6 @@ window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
 
                         let textContent = "";
 
-                        // バイナリファイル（ELFなど）の場合は文字化けを表示させず初期テキストをセット
                         if (inspect.type === "ELF_NATIVE" || inspect.type === "UNKNOWN") {
                             textContent = `// VS Code / Monaco IDE Engine initialized.\n// File: ${filePath}\n\n#include <stdio.h>\n\nint main() {\n    printf("Hello World!\\n");\n    return 0;\n}`;
                         } else {
@@ -1079,7 +1075,7 @@ window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
                         return;
                     }
 
-                    // 2. GUIバイナリ（linux_gui_app.binなど）の場合のみ Direct Canvas Pipeline を起動
+                    // 2. GUIバイナリ（linux_gui_app.binなど） Direct Canvas Pipeline
                     if (inspect.type === "ELF_NATIVE" || inspect.isExecutable) {
                         logToTerminal(`[Router] Direct Canvas Framebuffer パイプラインを起動...\n`);
                         wm.createWindow({
