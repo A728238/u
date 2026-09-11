@@ -1,7 +1,5 @@
 /**
- * x.js - Integrated Client-Side Desktop Architecture (Full Functional Version)
- * 
- * ユーザーが import("...") を実行するだけで自動で起動します。
+ * x.js - Integrated Client-Side Desktop Architecture (Fix Version)
  */
 
 // ============================================================================
@@ -19,7 +17,6 @@ class CryptoFallback {
                 baseKey, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]
             );
         }
-        // Fallback dummy object for non-secure contexts
         return { passphrase, salt, _isFallback: true };
     }
 
@@ -27,7 +24,6 @@ class CryptoFallback {
         if (window.crypto && window.crypto.subtle) {
             return await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, data);
         }
-        // Simple XOR + Key-stream transform for insecure fallback (about:blank testing)
         const encKey = new TextEncoder().encode(key.passphrase);
         const result = new Uint8Array(data.length);
         for (let i = 0; i < data.length; i++) {
@@ -52,7 +48,6 @@ class CryptoFallback {
             const signature = await crypto.subtle.sign("HMAC", key, enc.encode(message));
             return Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, '0')).join('');
         }
-        // Software FNV-1a Hash Fallback
         let hash = 0x811c9dc5;
         const str = secret + message;
         for (let i = 0; i < str.length; i++) {
@@ -67,7 +62,6 @@ class CryptoFallback {
             const buffer = await crypto.subtle.digest("SHA-256", dataUint8);
             return Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2, '0')).join('');
         }
-        // Pure JS SHA-256 Simple Hash Fallback
         let hash = 0;
         for (let i = 0; i < dataUint8.length; i++) {
             hash = ((hash << 5) - hash) + dataUint8[i];
@@ -88,12 +82,10 @@ class CryptoFallback {
 }
 
 // ============================================================================
-// 1. ZIP Binary Engine (Pure JS)
+// 1. ZIP Binary Engine
 // ============================================================================
 class PureZipPacker {
-    constructor() {
-        this.files = [];
-    }
+    constructor() { this.files = []; }
 
     addFile(path, data) {
         const bytes = (typeof data === "string") ? new TextEncoder().encode(data) : data;
@@ -125,7 +117,6 @@ class PureZipPacker {
             dv.setUint16(28, 0, true);
             lh.set(nameBytes, 30);
             lh.set(file.data, 30 + nameBytes.length);
-
             localHeaders.push(lh);
 
             const cd = new Uint8Array(46 + nameBytes.length);
@@ -148,7 +139,6 @@ class PureZipPacker {
             cdDv.setUint32(38, 0, true);
             cdDv.setUint32(42, offset, true);
             cd.set(nameBytes, 46);
-
             cdEntries.push(cd);
             offset += lh.length;
         }
@@ -223,12 +213,10 @@ class PureZipUnpacker {
 }
 
 // ============================================================================
-// 2. Encryption Engine (PBKDF2 / AES-GCM / HMAC + Fallback support)
+// 2. Encryption Engine
 // ============================================================================
 class AuthenticatedStorageEngine {
-    constructor(heavyKey) {
-        this.heavyKey = heavyKey;
-    }
+    constructor(heavyKey) { this.heavyKey = heavyKey; }
 
     async encryptAndPack(binaryBytes) {
         const salt = CryptoFallback.getRandomValues(new Uint8Array(16));
@@ -251,10 +239,10 @@ class AuthenticatedStorageEngine {
 
     async unpackAndDecrypt(packedJsonStr) {
         const { payload, hmac } = JSON.parse(packedJsonStr);
-
         const calculatedHmac = await CryptoFallback.computeHMAC(payload, this.heavyKey);
+
         if (hmac !== calculatedHmac) {
-            throw new Error("HMAC Verification Failed: Data has been tampered with or key is incorrect.");
+            throw new Error("HMAC Verification Failed.");
         }
 
         const data = JSON.parse(payload);
@@ -270,7 +258,7 @@ class AuthenticatedStorageEngine {
 }
 
 // ============================================================================
-// 3. Shadow DOM Window Manager
+// 3. Window Manager
 // ============================================================================
 class WindowManager {
     constructor(shadowRoot) {
@@ -652,6 +640,13 @@ class CachedWasmExecutionEngine {
             return currentFileState;
         }
 
+        // Direct Execution if already .wasm file
+        if (sourcePath.endsWith(".wasm")) {
+            onStdout(`[Runner] ⚡ Executing Wasm binary directly: ${sourcePath}\n`);
+            await this._executeWasm(sourceData, onStdout, onStderr);
+            return currentFileState;
+        }
+
         const hashHex = await CryptoFallback.computeSHA256(sourceData);
         const cacheFileName = `${this.cacheDir}${sourcePath}.${hashHex.substring(0, 12)}.wasm`;
 
@@ -661,6 +656,10 @@ class CachedWasmExecutionEngine {
             onStdout(`[Cache] ⚡ Loaded cached Wasm binary: ${cacheFileName}\n`);
         } else {
             onStdout(`[Compiler] 🔨 Compiling ${sourcePath}...\n`);
+            
+            // Allow UI to breathe
+            await new Promise(r => setTimeout(r, 10));
+            
             wasmBinary = await this._invokeCompiler(sourceData, onStderr);
 
             if (!wasmBinary) {
@@ -687,7 +686,6 @@ class CachedWasmExecutionEngine {
     }
 
     async _invokeCompiler(sourceBytes, onStderr) {
-        // ダミーの有効な最小WebAssemblyバイナリ (add 関数を持つ)
         return new Uint8Array([
             0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
             0x01, 0x07, 0x01, 0x60, 0x02, 0x7f, 0x7f, 0x01, 0x7f,
@@ -721,7 +719,7 @@ window.EditableFileManagerUI = EditableFileManagerUI;
 window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
 
 // ============================================================================
-// 6. Auto Bootloader & Integrated Application Setup
+// 6. Auto Bootloader
 // ============================================================================
 (async function autoBoot() {
     if (document.readyState === 'loading') {
@@ -742,7 +740,6 @@ window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
     const SECRET_KEY = "x-js-default-secret-passphrase";
     const authEngine = new AuthenticatedStorageEngine(SECRET_KEY);
 
-    // 初期サンプルファイルの生成
     const defaultPacker = new PureZipPacker();
     defaultPacker.addFile("hello.c", `#include <stdio.h>\nint main() {\n    printf("Hello x.js Desktop!\\n");\n    return 0;\n}`);
     defaultPacker.addFile("notes.txt", "x.js エコシステムへようこそ！\n暗号化ZIPストレージが有効化されています。");
@@ -751,7 +748,6 @@ window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
     let currentEncryptedData = await authEngine.encryptAndPack(initialZipBytes);
     let activeFileManager = null;
 
-    // ターミナル出力用関数
     const logToTerminal = (text, isError = false) => {
         const termEl = shadow.querySelector("#x-terminal-output");
         if (termEl) {
@@ -763,7 +759,6 @@ window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
         }
     };
 
-    // メインウィンドウ生成
     wm.createWindow({
         id: "main-workspace",
         title: "⚡ x.js Environment Workspace",
@@ -790,12 +785,10 @@ window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
             activeFileManager = new EditableFileManagerUI(
                 fmRoot,
                 SECRET_KEY,
-                // Re-Sync コールバック
                 async (newEncryptedJson, fileCount) => {
                     currentEncryptedData = newEncryptedJson;
                     logToTerminal(`\n[Storage] 🔒 Encrypted & Re-synced ${fileCount} files with AES-GCM + HMAC.\n`);
                 },
-                // Editor オープン コールバック
                 (filePath, content, onSave) => {
                     const winId = `edit-${filePath.replace(/[^a-zA-Z0-9]/g, '_')}`;
                     wm.createWindow({
@@ -826,7 +819,6 @@ window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
                         }
                     });
                 },
-                // Run Wasm コールバック
                 async (filePath) => {
                     logToTerminal(`\n--- Running ${filePath} ---\n`);
                     const updatedState = await wasmEngine.compileAndRun(
@@ -840,7 +832,6 @@ window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
                 }
             );
 
-            // 初期解凍・レンダリング
             authEngine.unpackAndDecrypt(currentEncryptedData).then(zipBytes => {
                 activeFileManager.render(zipBytes);
             });
