@@ -1,8 +1,8 @@
 /**
  * x.js - Integrated OS-in-Browser Desktop System
- * - Fixed Universal Execution Router (Routed "code"/"editor" to Monaco IDE)
+ * - Fixed Universal Execution Router (Routed "code"/"editor" to Monaco IDE without binary distortion)
  * - Canvas Display Fix (Alpha Channel & RequestAnimationFrame Loop)
- * - Monaco Layout Initialization Fix
+ * - Monaco Layout & Shadow DOM Mount Initialization Fix
  */
 
 // ============================================================================
@@ -566,6 +566,7 @@ class MonacoLspIDEEngine {
     }
 
     createEditor(containerEl, initialCode, language = 'c', onChange) {
+        containerEl.innerHTML = "";
         const editor = monaco.editor.create(containerEl, {
             value: initialCode,
             language: language,
@@ -576,7 +577,7 @@ class MonacoLspIDEEngine {
             fontFamily: "'Consolas', 'Courier New', 'Yu Gothic UI', 'Hiragino Kaku Gothic ProN', monospace"
         });
 
-        setTimeout(() => editor.layout(), 50);
+        setTimeout(() => editor.layout(), 100);
 
         if (onChange) {
             editor.onDidChangeModelContent(() => onChange(editor.getValue()));
@@ -619,7 +620,7 @@ class AntiCspNativeIdeHost {
                 .ide-actions { display: flex; gap: 8px; }
                 .ide-btn { background: #0e639c; color: white; border: none; padding: 4px 10px; border-radius: 2px; cursor: pointer; font-size: 0.75rem; font-family: sans-serif; }
                 .ide-btn:hover { background: #1177bb; }
-                .ide-editor-area { flex: 1; width: 100%; height: 100%; }
+                .ide-editor-area { flex: 1; width: 100%; height: calc(100% - 35px); position: relative; }
             </style>
             <div class="native-ide">
                 <div class="ide-toolbar">
@@ -935,7 +936,7 @@ window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
     const defaultPacker = new PureZipPacker();
     defaultPacker.addFile("hello.c", `#include <stdio.h>\n\nint main() {\n    printf("Hello Universal x.js Engine!\\n");\n    return 0;\n}`);
     defaultPacker.addFile("code-editor", new Uint8Array([0x7F, 0x45, 0x4C, 0x46, 0x02, 0x01])); 
-    defaultPacker.addFile("linux_gui_app.bin", "NATIVE_LINUX_GUI_BINARY_MOCK");
+    defaultPacker.addFile("linux_gui_app.bin", new Uint8Array([0x7F, 0x45, 0x4C, 0x46, 0x01, 0x01]));
     defaultPacker.addFile("code", "# VS Code Launcher");
     const initialZipBytes = await defaultPacker.buildZipBinaryAsync();
 
@@ -1022,14 +1023,22 @@ window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
 
                     logToTerminal(`\n[Universal Router] 実行ルーティング: ${filePath} (${inspect.type})\n`);
 
-                    // 1. "code" や "editor" 関連、またはテキスト/ソースコードの場合は Monaco IDE を起動
                     const isEditorApp = filePath.toLowerCase().includes("code") || filePath.toLowerCase().includes("editor");
-                    if (isEditorApp || inspect.type === "C_SOURCE" || inspect.type === "JS_SOURCE" || inspect.type === "TEXT_OR_DATA") {
+
+                    // 1. VS Code / Monaco IDE アプリケーションの起動
+                    if (isEditorApp || inspect.type === "C_SOURCE" || inspect.type === "JS_SOURCE") {
                         logToTerminal(`[Router] Monaco IDE エディタモジュールを起動中...\n`);
 
-                        const textContent = (file.data && file.data.length > 0) 
-                            ? new TextDecoder('utf-8').decode(file.data) 
-                            : `// ${filePath}\n// IDE Editor Engine initialized.\n\n#include <stdio.h>\n\nint main() {\n    printf("Hello World!\\n");\n    return 0;\n}`;
+                        let textContent = "";
+
+                        // バイナリファイル（ELFなど）の場合は文字化けを表示させず初期テキストをセット
+                        if (inspect.type === "ELF_NATIVE" || inspect.type === "UNKNOWN") {
+                            textContent = `// VS Code / Monaco IDE Engine initialized.\n// File: ${filePath}\n\n#include <stdio.h>\n\nint main() {\n    printf("Hello World!\\n");\n    return 0;\n}`;
+                        } else {
+                            textContent = (file.data && file.data.length > 0) 
+                                ? new TextDecoder('utf-8').decode(file.data) 
+                                : `// Empty file: ${filePath}`;
+                        }
 
                         await monacoLsp.initMonaco();
 
@@ -1037,8 +1046,8 @@ window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
                         wm.createWindow({
                             id: winId,
                             title: `VS Code / Monaco IDE - ${filePath}`,
-                            width: 680,
-                            height: 460,
+                            width: 720,
+                            height: 500,
                             x: 80,
                             y: 40,
                             renderContent: (edContainer, winInstance) => {
@@ -1053,10 +1062,9 @@ window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
                                 const ext = filePath.split('.').pop().toLowerCase();
                                 const lang = ext === 'c' ? 'c' : ext === 'js' ? 'javascript' : 'cpp';
 
-                                const editor = monacoLsp.createEditor(mount, textContent, lang, (v) => {
-                                    // Live edit listener
-                                });
+                                const editor = monacoLsp.createEditor(mount, textContent, lang);
 
+                                setTimeout(() => editor.layout(), 100);
                                 winInstance.onResizeCallbacks.push(() => editor.layout());
 
                                 edContainer.querySelector("#native-ide-save").addEventListener("click", () => {
@@ -1071,7 +1079,7 @@ window.CachedWasmExecutionEngine = CachedWasmExecutionEngine;
                         return;
                     }
 
-                    // 2. GUIバイナリの場合のみ Direct Canvas Pipeline を起動
+                    // 2. GUIバイナリ（linux_gui_app.binなど）の場合のみ Direct Canvas Pipeline を起動
                     if (inspect.type === "ELF_NATIVE" || inspect.isExecutable) {
                         logToTerminal(`[Router] Direct Canvas Framebuffer パイプラインを起動...\n`);
                         wm.createWindow({
